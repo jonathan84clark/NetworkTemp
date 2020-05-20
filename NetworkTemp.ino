@@ -10,8 +10,12 @@
 * Date: 12/2/2019
 ************************************************************/
 #include <SPI.h>
+#include <Wire.h>
 #include <EthernetV2_0.h>
 #include <Adafruit_Sensor.h>
+#include "SparkFunMPL3115A2.h"
+
+
 #include <DHT.h>
 #include <DHT_U.h>
 
@@ -31,14 +35,17 @@ EthernetServer server(80);
 #define W5200_CS  10
 #define SDCARD_CS 4
 DHT_Unified dht(DHTPIN, DHTTYPE);
+MPL3115A2 myPressure;
 uint32_t delayMS;
 unsigned long ms_ticks = 0;
 unsigned long next_read = 0;
 float temperature_c = 0.0;
 float humidity = 0.0;
+float pressure = 0.0;
 
 void setup() 
 {
+   Wire.begin();        // Join i2c bus
    // Open serial communications and wait for port to open:
    Serial.begin(9600);
    pinMode(SDCARD_CS, OUTPUT);
@@ -53,6 +60,10 @@ void setup()
    // Print temperature sensor details.
    sensor_t sensor;
    dht.temperature().getSensor(&sensor);
+   myPressure.begin(); // Get sensor online
+   myPressure.setModeBarometer(); // Measure pressure in Pascals from 20 to 110 kPa
+   myPressure.setOversampleRate(7); // Set Oversample to the recommended 128
+   myPressure.enableEventFlags(); // Enable all three pressure and temp event flags
    // Set delay between sensor readings based on sensor details.
    delayMS = sensor.min_delay / 1000;
 }
@@ -84,6 +95,7 @@ void ReadSensor()
    {
       humidity = event.relative_humidity;
    }
+   pressure = myPressure.readPressure();
 }
 
 void loop() 
@@ -120,6 +132,8 @@ void loop()
                client.print(temperature_c);
                client.print(", \"humidity\" : ");
                client.print(humidity);
+               client.print(", \"pressure\" : ");
+               client.print(pressure);
                client.print("}");
                break;
             }
