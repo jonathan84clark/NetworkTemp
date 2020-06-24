@@ -14,7 +14,7 @@ import re
 # Interacts with the Arduino serial sensor
 class EnvironmentalSensor():
     def __init__(self):
-        self.ser = serial.Serial('COM11')
+        self.ser = serial.Serial('/dev/ttyACM0')
         self.ser.baudrate = 115200
         self.ser.close()
         self.ser.open()
@@ -26,6 +26,7 @@ class EnvironmentalSensor():
         self.temperature = float(m.group(1))
         self.humidity = float(m.group(2))
         self.pressure = float(m.group(3))
+        print(self.temperature)
 
 environ = EnvironmentalSensor()
 environ.read()
