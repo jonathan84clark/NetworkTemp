@@ -35,9 +35,9 @@ app = Flask(__name__)
 
 @app.route('/local_environment', methods=['GET', 'POST'])
 def control_post():
-
-    return "Done"
-
+    global temp_sensor
+    output = jsonify(temp_sensor.data)
+    return output
 
 class TemperatureSensor:
     def __init__(self):
@@ -47,13 +47,14 @@ class TemperatureSensor:
                         '2302': Adafruit_DHT.AM2302 }
         self.sensor = sensor_args['11']
         self.pin = '4'
-        self.temperature1 = 0.0
-        self.temperature1f = 0.0
-        self.humidity = 0.0
-        self.altitude = 0.0
-        self.cTemp = 0.0
-        self.fTemp = 0.0
-        self.pressure = 0.0
+        self.data = {"temp1" : 0.0, "temp1f" : 0.0, "temp2" : 0.0, "temp2f" : 0.0, "humidity" : 0.0, "altitude" : 0.0, "pressure" : 0.0}
+        #self.temperature1 = 0.0
+        #self.temperature1f = 0.0
+        #self.humidity = 0.0
+        #self.altitude = 0.0
+        #self.cTemp = 0.0
+        #self.fTemp = 0.0
+        #self.pressure = 0.0
 
         dht11Thread = Thread(target = self.regular_read_dht11)
         dht11Thread.daemon = True
@@ -65,7 +66,7 @@ class TemperatureSensor:
 
         server_thread = Thread(target = self.run_server)
         server_thread.daemon = True
-        #server_thread.start()
+        server_thread.start()
 
     
     # Regularly read the dht11
@@ -84,9 +85,9 @@ class TemperatureSensor:
         # Try to grab a sensor reading.  Use the read_retry method which will retry up
         # to 15 times to get a sensor reading (waiting 2 seconds between each retry).
         humidity, temperature = Adafruit_DHT.read_retry(self.sensor, self.pin)
-        self.humidity = humidity
-        self.temperature1 = temperature
-        self.temperature1f = temperature * 9.0/5.0 + 32.0
+        self.data["humidity"] = humidity
+        self.data["temp1"] = temperature
+        self.data["temp1f"] = temperature * 9.0/5.0 + 32.0
         # Un-comment the line below to convert the temperature to Fahrenheit.
         # temperature = temperature * 9/5.0 + 32
 
@@ -94,10 +95,10 @@ class TemperatureSensor:
         # the results will be null (because Linux can't
         # guarantee the timing of calls to read the sensor).
         # If this happens try again!
-        if humidity is not None and temperature is not None:
-            print('Temp={0:0.1f}*  Humidity={1:0.1f}%'.format(temperature, humidity))
-        else:
-            print('Failed to get reading. Try again!')
+        #if humidity is not None and temperature is not None:
+        #    print('Temp={0:0.1f}*  Humidity={1:0.1f}%'.format(temperature, humidity))
+        #else:
+        #    print('Failed to get reading. Try again!')
     
     # Reads data from the mpl3115a2
     def read_mpl3115a2(self):
@@ -121,9 +122,9 @@ class TemperatureSensor:
         # Convert the data to 20-bits
         tHeight = ((data[1] * 65536) + (data[2] * 256) + (data[3] & 0xF0)) / 16
         temp = ((data[4] * 256) + (data[5] & 0xF0)) / 16
-        self.altitude = tHeight / 16.0
-        self.cTemp = temp / 16.0
-        self.fTemp = cTemp * 1.8 + 32
+        self.data["altitude"] = tHeight / 16.0
+        self.data["temp2"] = temp / 16.0
+        self.data["temp2f"] = self.data["temp2"] * 1.8 + 32
         # MPL3115A2 address, 0x60(96)
         # Select control register, 0x26(38)
         #		0x39(57)	Active mode, OSR = 128, Barometer mode
@@ -135,12 +136,12 @@ class TemperatureSensor:
         data = bus.read_i2c_block_data(0x60, 0x00, 4)
         # Convert the data to 20-bits
         pres = ((data[1] * 65536) + (data[2] * 256) + (data[3] & 0xF0)) / 16
-        self.pressure = (pres / 4.0) / 1000.0
+        self.data["pressure"] = (pres / 4.0) / 1000.0
         # Output data to screen
-        print "Pressure : %.2f kPa" %pressure
-        print "Altitude : %.2f m" %altitude
-        print "Temperature in Celsius  : %.2f C" %cTemp
-        print "Temperature in Fahrenheit  : %.2f F" %fTemp
+        #print "Pressure : %.2f kPa" %pressure
+        #print "Altitude : %.2f m" %altitude
+        #print "Temperature in Celsius  : %.2f C" %cTemp
+        #print "Temperature in Fahrenheit  : %.2f F" %fTemp
 
     # Runs the web server
     def run_server(self):
