@@ -29,7 +29,10 @@ from flask import Flask, request, redirect
 from flask import Response
 import flask.json
 import flask.json
+import os
 from flask import jsonify
+from datetime import datetime
+from scipy import stats
 
 app = Flask(__name__)
 
@@ -68,7 +71,65 @@ class TemperatureSensor:
         server_thread.daemon = True
         server_thread.start()
 
-    
+        data_thread = Thread(target = self.data_processor)
+        data_thread.daemon = True
+        data_thread.start()
+
+ 
+    # Process the temperature, humidity and other data
+    def data_processor(self):
+        temperatures = []
+        humidities = []
+        pressures = []
+        x_values1 = []
+        x_values2 = []
+        x_values3 = []
+        index = 0
+        file_name = '/home/pi/temperature_data.csv'
+        if not os.path.exists(file_name):
+            f = open(file_name, 'w')
+            f.write('Date,Time,Temp1,TempSlope,Humidity,HumiditySlope,Pressure,PressureSlope\n')
+            f.close()
+        while (True):
+            now = datetime.now()
+            temp1 = self.data["temp1f"]
+            humidity = self.data["humidity"]
+            pressure = self.data["pressure"]
+            temperatures.append(temp1)
+            humidities.append(humidity)
+            pressures.append(pressure)
+            x_values1.append(index)
+            x_values2.append(index)
+            x_values3.append(index)
+            index += 1
+            f = open(file_name, 'a')
+            tempSlope = 0.0
+            humiditySlope = 0.0
+            pressureSlope = 0.0
+            if len(temperatures) > 15:
+                tempSlope, intercept, r_value, p_value, std_err = stats.linregress(x_values1, temperatures)
+                temperatures.pop(len(temperatures) - 1)
+                x_values1.pop(len(x_values1) - 1)
+
+            if len(humidities) > 15:
+                tempSlope, intercept, r_value, p_value, std_err = stats.linregress(x_values2, humidities)
+                humidities.pop(len(humidities) - 1)
+                x_values2.pop(len(x_values2) - 1)
+
+
+            if len(pressures) > 15:
+                tempSlope, intercept, r_value, p_value, std_err = stats.linregress(x_values3, pressures)
+                pressures.pop(len(pressures) - 1)
+                x_values3.pop(len(x_values3) - 1)
+
+            date_str = now.strftime("%m/%d/%Y,%H:%M:%S")
+            data_string = date_str + "," + str(temp1) + "," + str(tempSlope)
+            data_string += "," + str(humidity) + "," + str(humiditySlope)
+            data_string += "," + str(pressure) + "," + str(pressureSlope) + "\n"
+            f.write(data_string)
+            f.close()
+            time.sleep(30)
+        
     # Regularly read the dht11
     def regular_read_dht11(self):
         while (True):
