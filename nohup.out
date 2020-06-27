@@ -10,3 +10,45 @@
 192.168.1.8 - - [25/Jun/2020 05:38:56] "[37mGET /local_environment HTTP/1.1[0m" 200 -
 192.168.1.2 - - [25/Jun/2020 13:53:26] "[37mGET /local_environment HTTP/1.1[0m" 200 -
 192.168.1.2 - - [25/Jun/2020 13:53:27] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+Traceback (most recent call last):
+  File "/home/pi/NetworkTemp/TemperatureServer.py", line 35, in <module>
+    from scipy import stats
+  File "/usr/lib/python2.7/dist-packages/scipy/stats/__init__.py", line 345, in <module>
+    from .stats import *
+  File "/usr/lib/python2.7/dist-packages/scipy/stats/stats.py", line 171, in <module>
+    from . import distributions
+  File "/usr/lib/python2.7/dist-packages/scipy/stats/distributions.py", line 10, in <module>
+    from ._distn_infrastructure import (entropy, rv_discrete, rv_continuous,
+  File "/usr/lib/python2.7/dist-packages/scipy/stats/_distn_infrastructure.py", line 16, in <module>
+    from scipy.misc import doccer
+  File "/usr/lib/python2.7/dist-packages/scipy/misc/__init__.py", line 68, in <module>
+    from scipy.interpolate._pade import pade as _pade
+  File "/usr/lib/python2.7/dist-packages/scipy/interpolate/__init__.py", line 175, in <module>
+    from .interpolate import *
+  File "/usr/lib/python2.7/dist-packages/scipy/interpolate/interpolate.py", line 32, in <module>
+    from .interpnd import _ndim_coords_from_arrays
+  File "interpnd.pyx", line 1, in init scipy.interpolate.interpnd
+  File "/usr/lib/python2.7/dist-packages/scipy/spatial/__init__.py", line 97, in <module>
+    from ._spherical_voronoi import SphericalVoronoi
+  File "/usr/lib/python2.7/dist-packages/scipy/spatial/_spherical_voronoi.py", line 19, in <module>
+    from scipy.spatial.distance import pdist
+  File "/usr/lib/python2.7/dist-packages/scipy/spatial/distance.py", line 1566, in <module>
+    MetricInfo = namedtuple("MetricInfo", 'aka types validator ')
+  File "/usr/lib/python2.7/collections.py", line 386, in namedtuple
+    exec class_definition in namespace
+  File "<string>", line 1, in <module>
+KeyboardInterrupt
+ * Serving Flask app "TemperatureServer" (lazy loading)
+ * Environment: production
+   WARNING: This is a development server. Do not use it in a production deployment.
+   Use a production WSGI server instead.
+ * Debug mode: on
+ * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+192.168.1.8 - - [26/Jun/2020 05:44:47] "[37mGET /local_environment HTTP/1.1[0m" 200 -
+192.168.1.8 - - [26/Jun/2020 05:44:47] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+ * Serving Flask app "TemperatureServer" (lazy loading)
+ * Environment: production
+   WARNING: This is a development server. Do not use it in a production deployment.
+   Use a production WSGI server instead.
+ * Debug mode: on
+ * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)

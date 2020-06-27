@@ -33,6 +33,7 @@ import os
 from flask import jsonify
 from datetime import datetime
 from scipy import stats
+import numpy as np
 
 app = Flask(__name__)
 
@@ -75,7 +76,27 @@ class TemperatureSensor:
         data_thread.daemon = True
         data_thread.start()
 
- 
+    def ComputeAverage(self, list):
+        a = np.array(list)
+        standard_deviation = np.std(a)
+        average = np.average(a)
+        new_average_items = []
+        items_to_remove = []
+        if standard_deviation == 0.0:
+            return average
+
+        for x in range(0, len(list)):
+            if abs((list[x] - average) / standard_deviation) < 3.0:
+                new_average_items.append(list[x])
+            #else:
+            #    num_drops += 1.0
+
+        if len(new_average_items) != len(list):
+            a = np.array(new_average_items)
+            average = np.average(a)
+
+        return average
+
     # Process the temperature, humidity and other data
     def data_processor(self):
         temperatures = []
@@ -84,7 +105,7 @@ class TemperatureSensor:
         x_values1 = []
         x_values2 = []
         x_values3 = []
-        index = 0
+        index = 0.0
         file_name = '/home/pi/temperature_data.csv'
         if not os.path.exists(file_name):
             f = open(file_name, 'w')
@@ -101,34 +122,40 @@ class TemperatureSensor:
             x_values1.append(index)
             x_values2.append(index)
             x_values3.append(index)
-            index += 1
+            index += 1.0
             f = open(file_name, 'a')
             tempSlope = 0.0
             humiditySlope = 0.0
             pressureSlope = 0.0
+            average_temp = temp1
+            average_humid = humidity
+            average_pressure = pressure
             if len(temperatures) > 15:
                 tempSlope, intercept, r_value, p_value, std_err = stats.linregress(x_values1, temperatures)
-                temperatures.pop(len(temperatures) - 1)
-                x_values1.pop(len(x_values1) - 1)
+                average_temp = self.ComputeAverage(temperatures)
+                temperatures.pop(0)
+                x_values1.pop(0)
 
             if len(humidities) > 15:
                 tempSlope, intercept, r_value, p_value, std_err = stats.linregress(x_values2, humidities)
-                humidities.pop(len(humidities) - 1)
-                x_values2.pop(len(x_values2) - 1)
+                average_humid = self.ComputeAverage(humidities)
+                humidities.pop(0)
+                x_values2.pop(0)
 
 
             if len(pressures) > 15:
                 tempSlope, intercept, r_value, p_value, std_err = stats.linregress(x_values3, pressures)
-                pressures.pop(len(pressures) - 1)
-                x_values3.pop(len(x_values3) - 1)
+                average_pressure = self.ComputeAverage(pressures)
+                pressures.pop(0)
+                x_values3.pop(0)
 
             date_str = now.strftime("%m/%d/%Y,%H:%M:%S")
-            data_string = date_str + "," + str(temp1) + "," + str(tempSlope)
-            data_string += "," + str(humidity) + "," + str(humiditySlope)
-            data_string += "," + str(pressure) + "," + str(pressureSlope) + "\n"
+            data_string = date_str + "," + str(average_temp) + "," + str(tempSlope)
+            data_string += "," + str(average_humid) + "," + str(humiditySlope)
+            data_string += "," + str(average_pressure) + "," + str(pressureSlope) + "\n"
             f.write(data_string)
             f.close()
-            time.sleep(30)
+            time.sleep(1)
         
     # Regularly read the dht11
     def regular_read_dht11(self):
