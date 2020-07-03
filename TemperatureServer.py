@@ -34,6 +34,9 @@ from flask import jsonify
 from datetime import datetime
 from scipy import stats
 import numpy as np
+import time;
+
+DHT_11_SAMPLE_SIZE = 10
 
 app = Flask(__name__)
 
@@ -45,20 +48,27 @@ def control_post():
 
 class TemperatureSensor:
     def __init__(self):
+
+        # DHT 11 Data points
+        self.stored_temps = [] 
+        self.temperature_times = []
+        self.stored_humids = []
+        self.humid_times = []
+
+        # MPL3115A2 Data points
+        self.stored_pressures = []
+        self.pressure_times = []
+        self.stored_temp2s = []
+        self.temp2s_times = []
+
         # Parse command line parameters.
         sensor_args = { '11': Adafruit_DHT.DHT11,
                         '22': Adafruit_DHT.DHT22,
                         '2302': Adafruit_DHT.AM2302 }
         self.sensor = sensor_args['11']
         self.pin = '4'
-        self.data = {"temp1" : 0.0, "temp1f" : 0.0, "temp2" : 0.0, "temp2f" : 0.0, "humidity" : 0.0, "altitude" : 0.0, "pressure" : 0.0}
-        #self.temperature1 = 0.0
-        #self.temperature1f = 0.0
-        #self.humidity = 0.0
-        #self.altitude = 0.0
-        #self.cTemp = 0.0
-        #self.fTemp = 0.0
-        #self.pressure = 0.0
+        self.data = {"temp1" : 0.0, "temp1f" : 0.0, "temp2" : 0.0, "temp2f" : 0.0, "humidity" : 0.0, "altitude" : 0.0, "pressure" : 0.0,
+                     "temp1_time" : 0.0, "temp2_time" : 0.0, "humidity_time" : 0.0, "pressure_time" : 0.0}
 
         dht11Thread = Thread(target = self.regular_read_dht11)
         dht11Thread.daemon = True
@@ -88,8 +98,6 @@ class TemperatureSensor:
         for x in range(0, len(list)):
             if abs((list[x] - average) / standard_deviation) < 3.0:
                 new_average_items.append(list[x])
-            #else:
-            #    num_drops += 1.0
 
         if len(new_average_items) != len(list):
             a = np.array(new_average_items)
@@ -99,94 +107,71 @@ class TemperatureSensor:
 
     # Process the temperature, humidity and other data
     def data_processor(self):
-        temperatures = []
-        humidities = []
-        pressures = []
-        x_values1 = []
-        x_values2 = []
-        x_values3 = []
         index = 0.0
         file_name = '/home/pi/temperature_data.csv'
         if not os.path.exists(file_name):
             f = open(file_name, 'w')
-            f.write('Date,Time,Temp1,TempSlope,Humidity,HumiditySlope,Pressure,PressureSlope\n')
+            f.write('Date,Time,UTC,Temp1,TempSlope,Humidity,HumiditySlope,Pressure,PressureSlope\n')
             f.close()
         while (True):
             now = datetime.now()
-            temp1 = self.data["temp1f"]
-            humidity = self.data["humidity"]
-            pressure = self.data["pressure"]
-            temperatures.append(temp1)
-            humidities.append(humidity)
-            pressures.append(pressure)
-            x_values1.append(index)
-            x_values2.append(index)
-            x_values3.append(index)
-            index += 1.0
-            f = open(file_name, 'a')
             tempSlope = 0.0
             humiditySlope = 0.0
             pressureSlope = 0.0
-            average_temp = temp1
-            average_humid = humidity
-            average_pressure = pressure
-            if len(temperatures) > 15:
-                tempSlope, intercept, r_value, p_value, std_err = stats.linregress(x_values1, temperatures)
-                average_temp = self.ComputeAverage(temperatures)
-                temperatures.pop(0)
-                x_values1.pop(0)
-
-            if len(humidities) > 15:
-                tempSlope, intercept, r_value, p_value, std_err = stats.linregress(x_values2, humidities)
-                average_humid = self.ComputeAverage(humidities)
-                humidities.pop(0)
-                x_values2.pop(0)
-
-
-            if len(pressures) > 15:
-                tempSlope, intercept, r_value, p_value, std_err = stats.linregress(x_values3, pressures)
-                average_pressure = self.ComputeAverage(pressures)
-                pressures.pop(0)
-                x_values3.pop(0)
-
+            ts = time.time()
+            f = open(file_name, 'a')
             date_str = now.strftime("%m/%d/%Y,%H:%M:%S")
-            data_string = date_str + "," + str(average_temp) + "," + str(tempSlope)
-            data_string += "," + str(average_humid) + "," + str(humiditySlope)
-            data_string += "," + str(average_pressure) + "," + str(pressureSlope) + "\n"
+            data_string = date_str + "," + str(ts) + "," + str(self.data["temp1"]) + "," + str(tempSlope)
+            data_string += "," + str(self.data["humidity"]) + "," + str(humiditySlope)
+            data_string += "," + str(self.data["pressure"]) + "," + str(pressureSlope) + "\n"
             f.write(data_string)
             f.close()
-            time.sleep(1)
+            time.sleep(60)
         
     # Regularly read the dht11
     def regular_read_dht11(self):
         while (True):
             self.read_temp_humid()
-            time.sleep(1)
+            time.sleep(5)
 
     # Regularly read data from the mpl3115a2
     def regular_read_mpl3115a2(self):
         while (True):
             self.read_mpl3115a2()
-            time.sleep(1)
+            time.sleep(5)
 
     def read_temp_humid(self):
         # Try to grab a sensor reading.  Use the read_retry method which will retry up
         # to 15 times to get a sensor reading (waiting 2 seconds between each retry).
         humidity, temperature = Adafruit_DHT.read_retry(self.sensor, self.pin)
+
+        ts = time.time()
         self.data["humidity"] = humidity
         self.data["temp1"] = temperature
         self.data["temp1f"] = temperature * 9.0/5.0 + 32.0
-        # Un-comment the line below to convert the temperature to Fahrenheit.
-        # temperature = temperature * 9/5.0 + 32
+        self.stored_temps.append(temperature)
+        self.stored_humids.append(humidity)
+        self.temperature_times.append(ts)
+        self.humid_times.append(ts)
 
-        # Note that sometimes you won't get a reading and
-        # the results will be null (because Linux can't
-        # guarantee the timing of calls to read the sensor).
-        # If this happens try again!
-        #if humidity is not None and temperature is not None:
-        #    print('Temp={0:0.1f}*  Humidity={1:0.1f}%'.format(temperature, humidity))
-        #else:
-        #    print('Failed to get reading. Try again!')
+        if len(self.stored_temps) > DHT_11_SAMPLE_SIZE:
+            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temperature_times, self.stored_temps)
+            average_temp = self.ComputeAverage(self.stored_temps)
+            self.data["temp1"] = average_temp
+            self.data["temp1_time"] = ts
+            self.data["temp1f"] = average_temp * 9.0/5.0 + 32.0
+            self.stored_temps.pop(0)
+            self.temperature_times.pop(0)
+
+        if len(self.stored_humids) > DHT_11_SAMPLE_SIZE:
+            #humidSlope, intercept, r_value, p_value, std_err = stats.linregress(self.humid_times, self.stored_humids)
+            average_humid = self.ComputeAverage(self.stored_humids)
+            self.data["humidity"] = average_humid
+            self.data["humidity_time"] = ts
+            self.stored_humids.pop(0)
+            self.humid_times.pop(0)
+
+        print("Temp: " + str(self.data["temp1"]) + " Humidity: " + str(self.data["humidity"]))
     
     # Reads data from the mpl3115a2
     def read_mpl3115a2(self):
@@ -211,8 +196,8 @@ class TemperatureSensor:
         tHeight = ((data[1] * 65536) + (data[2] * 256) + (data[3] & 0xF0)) / 16
         temp = ((data[4] * 256) + (data[5] & 0xF0)) / 16
         self.data["altitude"] = tHeight / 16.0
-        self.data["temp2"] = temp / 16.0
-        self.data["temp2f"] = self.data["temp2"] * 1.8 + 32
+        temp2 = temp / 16.0
+        temp2f = temp2 * 1.8 + 32
         # MPL3115A2 address, 0x60(96)
         # Select control register, 0x26(38)
         #		0x39(57)	Active mode, OSR = 128, Barometer mode
@@ -224,11 +209,39 @@ class TemperatureSensor:
         data = bus.read_i2c_block_data(0x60, 0x00, 4)
         # Convert the data to 20-bits
         pres = ((data[1] * 65536) + (data[2] * 256) + (data[3] & 0xF0)) / 16
-        self.data["pressure"] = (pres / 4.0) / 1000.0
+        pressure = (pres / 4.0) / 1000.0
+
+        ts = time.time()
+        self.data["pressure"] = pressure
+        self.data["temp2"] = temp2
+        self.data["temp2f"] = temp2f
+
+        self.stored_pressures.append(pressure)
+        self.pressure_times.append(ts)
+        self.stored_temp2s.append(temp2)
+        self.temp2s_times.append(ts)
+
+        if len(self.stored_pressures) > DHT_11_SAMPLE_SIZE:
+            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temperature_times, self.stored_pressures)
+            average_pressure = self.ComputeAverage(self.stored_pressures)
+            self.data["pressure"] = average_pressure
+            self.data["pressure_time"] = ts
+            self.stored_pressures.pop(0)
+            self.temperature_times.pop(0)
+
+        if len(self.stored_temp2s) > DHT_11_SAMPLE_SIZE:
+            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temperature_times, self.stored_temp2s)
+            average_temp2 = self.ComputeAverage(self.stored_temp2s)
+            self.data["temp2"] = average_temp2
+            self.data["temp2f"] = average_temp2 * 1.8 + 32
+            self.data["temp2_time"] = ts
+            self.stored_temp2s.pop(0)
+            self.temp2s_times.pop(0)
+
         # Output data to screen
-        #print "Pressure : %.2f kPa" %pressure
+        print "Pressure : %.2f kPa" %self.data["pressure"]
         #print "Altitude : %.2f m" %altitude
-        #print "Temperature in Celsius  : %.2f C" %cTemp
+        print "Temperature in Celsius  : %.2f C" %self.data["temp2"]
         #print "Temperature in Fahrenheit  : %.2f F" %fTemp
 
     # Runs the web server
