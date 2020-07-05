@@ -1,42 +1,28 @@
 #!/usr/bin/python
-# Copyright (c) 2014 Adafruit Industries
-# Author: Tony DiCola
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+##################################################################
+# TEMPERATURE SERVER
+# DESC: The temperature server is designed to store and provide stable
+# temperature pressure and humidity information
+# Author: Jonathan L Clark
+# Date: 7/4/2020
+##################################################################
 # git clone https://github.com/adafruit/Adafruit_Python_DHT.git
 from threading import Thread
-import sys
 import smbus
 import time
 import Adafruit_DHT
-from flask import Flask, request, redirect
-from flask import Response
-import flask.json
 import flask.json
 import os
+import numpy as np
+import time;
+from flask import Flask, request, redirect
+from flask import Response
 from flask import jsonify
 from datetime import datetime
 from scipy import stats
-import numpy as np
-import time;
 
 DHT_11_SAMPLE_SIZE = 10
+RECORD_RATE_SEC = 5
 
 app = Flask(__name__)
 
@@ -86,6 +72,19 @@ class TemperatureSensor:
         data_thread.daemon = True
         data_thread.start()
 
+        
+    # Regularly read the dht11
+    def regular_read_dht11(self):
+        while (True):
+            self.read_temp_humid()
+            time.sleep(5)
+
+    # Regularly read data from the mpl3115a2
+    def regular_read_mpl3115a2(self):
+        while (True):
+            self.read_mpl3115a2()
+            time.sleep(5)
+
     def ComputeAverage(self, list):
         a = np.array(list)
         standard_deviation = np.std(a)
@@ -108,37 +107,63 @@ class TemperatureSensor:
     # Process the temperature, humidity and other data
     def data_processor(self):
         index = 0.0
+        recorded_temps = []
+        recorded_temp_times = []
+        recorded_humids = []
+        recorded_humid_times = []
+        recorded_pressures = []
+        recorded_pressure_times = []
+
         file_name = '/home/pi/temperature_data.csv'
         if not os.path.exists(file_name):
             f = open(file_name, 'w')
             f.write('Date,Time,UTC,Temp1,TempSlope,Humidity,HumiditySlope,Pressure,PressureSlope\n')
             f.close()
         while (True):
+            ts = time.time()
+            time.sleep(RECORD_RATE_SEC)
             now = datetime.now()
+
             tempSlope = 0.0
             humiditySlope = 0.0
             pressureSlope = 0.0
-            ts = time.time()
+
+            recorded_temp = self.data["temp1"]
+            recorded_humidity = self.data["humidity"]
+            recorded_pressure = self.data["pressure"]
+           
+            recorded_temps.append(recorded_temp)
+            recorded_temp_times.append(ts)
+
+            recorded_humids.append(recorded_humidity)
+            recorded_humid_times.append(ts)
+
+            recorded_pressures.append(recorded_pressure)
+            recorded_pressure_times.append(ts)
+
+            if len(recorded_temps) > DHT_11_SAMPLE_SIZE:
+                tempSlope, intercept, r_value, p_value, std_err = stats.linregress(recorded_temp_times, recorded_temps)
+                recorded_temps.pop(0)
+                recorded_temp_times.pop(0)
+
+            if len(recorded_humids) > DHT_11_SAMPLE_SIZE:
+                humiditySlope, intercept, r_value, p_value, std_err = stats.linregress(recorded_humid_times, recorded_humids)
+                recorded_humids.pop(0)
+                recorded_humid_times.pop(0)
+
+            if len(recorded_pressures) > DHT_11_SAMPLE_SIZE:
+                pressureSlope, intercept, r_value, p_value, std_err = stats.linregress(recorded_pressure_times, recorded_pressures)
+                recorded_pressures.pop(0)
+                recorded_pressure_times.pop(0)
+                
             f = open(file_name, 'a')
             date_str = now.strftime("%m/%d/%Y,%H:%M:%S")
-            data_string = date_str + "," + str(ts) + "," + str(self.data["temp1"]) + "," + str(tempSlope)
-            data_string += "," + str(self.data["humidity"]) + "," + str(humiditySlope)
-            data_string += "," + str(self.data["pressure"]) + "," + str(pressureSlope) + "\n"
+            data_string = date_str + "," + str(ts) + "," + str(recorded_temp) + "," + str(tempSlope)
+            data_string += "," + str(recorded_humidity) + "," + str(humiditySlope)
+            data_string += "," + str(recorded_pressure) + "," + str(pressureSlope) + "\n"
             f.write(data_string)
             f.close()
-            time.sleep(60)
-        
-    # Regularly read the dht11
-    def regular_read_dht11(self):
-        while (True):
-            self.read_temp_humid()
-            time.sleep(5)
-
-    # Regularly read data from the mpl3115a2
-    def regular_read_mpl3115a2(self):
-        while (True):
-            self.read_mpl3115a2()
-            time.sleep(5)
+            time.sleep(RECORD_RATE_SEC)
 
     def read_temp_humid(self):
         # Try to grab a sensor reading.  Use the read_retry method which will retry up
@@ -171,7 +196,7 @@ class TemperatureSensor:
             self.stored_humids.pop(0)
             self.humid_times.pop(0)
 
-        print("Temp: " + str(self.data["temp1"]) + " Humidity: " + str(self.data["humidity"]))
+        #print("Temp: " + str(self.data["temp1"]) + " Humidity: " + str(self.data["humidity"]))
     
     # Reads data from the mpl3115a2
     def read_mpl3115a2(self):
@@ -222,15 +247,15 @@ class TemperatureSensor:
         self.temp2s_times.append(ts)
 
         if len(self.stored_pressures) > DHT_11_SAMPLE_SIZE:
-            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temperature_times, self.stored_pressures)
+            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.pressure_times, self.stored_pressures)
             average_pressure = self.ComputeAverage(self.stored_pressures)
             self.data["pressure"] = average_pressure
             self.data["pressure_time"] = ts
             self.stored_pressures.pop(0)
-            self.temperature_times.pop(0)
+            self.pressure_times.pop(0)
 
         if len(self.stored_temp2s) > DHT_11_SAMPLE_SIZE:
-            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temperature_times, self.stored_temp2s)
+            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temp2s_times, self.stored_temp2s)
             average_temp2 = self.ComputeAverage(self.stored_temp2s)
             self.data["temp2"] = average_temp2
             self.data["temp2f"] = average_temp2 * 1.8 + 32
@@ -239,18 +264,17 @@ class TemperatureSensor:
             self.temp2s_times.pop(0)
 
         # Output data to screen
-        print "Pressure : %.2f kPa" %self.data["pressure"]
+        #print "Pressure : %.2f kPa" %self.data["pressure"]
         #print "Altitude : %.2f m" %altitude
-        print "Temperature in Celsius  : %.2f C" %self.data["temp2"]
+        #print "Temperature in Celsius  : %.2f C" %self.data["temp2"]
         #print "Temperature in Fahrenheit  : %.2f F" %fTemp
 
     # Runs the web server
     def run_server(self):
         app.run(use_reloader=False, debug=True, host="0.0.0.0", port=5000)
 
-temp_sensor = TemperatureSensor()
-#temp_sensor.read_mpl3115a2()
-#temp_sensor.read_temp_humid()
+if __name__ == '__main__':
+    temp_sensor = TemperatureSensor()
 
-while (True):
-    time.sleep(1)
+    while (True):
+        time.sleep(1)
