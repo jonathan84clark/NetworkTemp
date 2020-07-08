@@ -21,8 +21,8 @@ from flask import jsonify
 from datetime import datetime
 from scipy import stats
 
-DHT_11_SAMPLE_SIZE = 10
-RECORD_RATE_SEC = 5
+DHT_11_SAMPLE_SIZE = 30
+RECORD_RATE_SEC = 900
 
 app = Flask(__name__)
 
@@ -77,13 +77,13 @@ class TemperatureSensor:
     def regular_read_dht11(self):
         while (True):
             self.read_temp_humid()
-            time.sleep(5)
+            time.sleep(10)
 
     # Regularly read data from the mpl3115a2
     def regular_read_mpl3115a2(self):
         while (True):
             self.read_mpl3115a2()
-            time.sleep(5)
+            time.sleep(10)
 
     def ComputeAverage(self, list):
         a = np.array(list)
