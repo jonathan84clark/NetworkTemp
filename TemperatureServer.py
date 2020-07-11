@@ -22,7 +22,9 @@ from datetime import datetime
 from scipy import stats
 
 DHT_11_SAMPLE_SIZE = 30
-RECORD_RATE_SEC = 900
+RECORD_RATE_SEC = 1800
+STARTUP_TIME = 20
+READ_DELAY = 10
 
 app = Flask(__name__)
 
@@ -77,13 +79,13 @@ class TemperatureSensor:
     def regular_read_dht11(self):
         while (True):
             self.read_temp_humid()
-            time.sleep(10)
+            time.sleep(READ_DELAY)
 
     # Regularly read data from the mpl3115a2
     def regular_read_mpl3115a2(self):
         while (True):
             self.read_mpl3115a2()
-            time.sleep(10)
+            time.sleep(READ_DELAY)
 
     def ComputeAverage(self, list):
         a = np.array(list)
@@ -106,61 +108,28 @@ class TemperatureSensor:
 
     # Process the temperature, humidity and other data
     def data_processor(self):
-        index = 0.0
-        recorded_temps = []
-        recorded_temp_times = []
-        recorded_humids = []
-        recorded_humid_times = []
-        recorded_pressures = []
-        recorded_pressure_times = []
 
-        file_name = '/home/pi/temperature_data.csv'
-        if not os.path.exists(file_name):
-            f = open(file_name, 'w')
-            f.write('Date,Time,UTC,Temp1,TempSlope,Humidity,HumiditySlope,Pressure,PressureSlope\n')
-            f.close()
         while (True):
-            ts = time.time()
-            time.sleep(RECORD_RATE_SEC)
             now = datetime.now()
-
-            tempSlope = 0.0
-            humiditySlope = 0.0
-            pressureSlope = 0.0
+            file_name = '/home/pi/temperature_data_' + now.strftime("%m_%d_%Y") + ".csv"
+            if not os.path.exists(file_name):
+                f = open(file_name, 'w')
+                f.write('Date,Time,UTC,Temp1,Temp2,Humidity,Pressure\n')
+                f.close()
+            ts = time.time()
+            time.sleep(STARTUP_TIME)
 
             recorded_temp = self.data["temp1"]
+            recorded_tempf = self.data["temp1f"]
+            recorded_temp2 = self.data["temp2"]
+            recorded_temp2f = self.data["temp2f"]
             recorded_humidity = self.data["humidity"]
             recorded_pressure = self.data["pressure"]
-           
-            recorded_temps.append(recorded_temp)
-            recorded_temp_times.append(ts)
-
-            recorded_humids.append(recorded_humidity)
-            recorded_humid_times.append(ts)
-
-            recorded_pressures.append(recorded_pressure)
-            recorded_pressure_times.append(ts)
-
-            if len(recorded_temps) > DHT_11_SAMPLE_SIZE:
-                tempSlope, intercept, r_value, p_value, std_err = stats.linregress(recorded_temp_times, recorded_temps)
-                recorded_temps.pop(0)
-                recorded_temp_times.pop(0)
-
-            if len(recorded_humids) > DHT_11_SAMPLE_SIZE:
-                humiditySlope, intercept, r_value, p_value, std_err = stats.linregress(recorded_humid_times, recorded_humids)
-                recorded_humids.pop(0)
-                recorded_humid_times.pop(0)
-
-            if len(recorded_pressures) > DHT_11_SAMPLE_SIZE:
-                pressureSlope, intercept, r_value, p_value, std_err = stats.linregress(recorded_pressure_times, recorded_pressures)
-                recorded_pressures.pop(0)
-                recorded_pressure_times.pop(0)
                 
             f = open(file_name, 'a')
             date_str = now.strftime("%m/%d/%Y,%H:%M:%S")
-            data_string = date_str + "," + str(ts) + "," + str(recorded_temp) + "," + str(tempSlope)
-            data_string += "," + str(recorded_humidity) + "," + str(humiditySlope)
-            data_string += "," + str(recorded_pressure) + "," + str(pressureSlope) + "\n"
+            data_string = date_str + "," + str(ts) + "," + str(recorded_tempf) + "," + str(recorded_temp2f)
+            data_string += "," + str(recorded_humidity) + "," + str(recorded_pressure) + "\n"
             f.write(data_string)
             f.close()
             time.sleep(RECORD_RATE_SEC)
@@ -169,11 +138,17 @@ class TemperatureSensor:
         # Try to grab a sensor reading.  Use the read_retry method which will retry up
         # to 15 times to get a sensor reading (waiting 2 seconds between each retry).
         humidity, temperature = Adafruit_DHT.read_retry(self.sensor, self.pin)
+        tempf = temperature * 9.0/5.0 + 32.0
 
         ts = time.time()
+        self.data["delta_temp1"] = temperature - self.data["temp1"]
+        self.data["delta_temp1f"] = tempf - self.data["temp1f"]
+        self.data["delta_humid"] = humidity - self.data["humidity"]
         self.data["humidity"] = humidity
         self.data["temp1"] = temperature
-        self.data["temp1f"] = temperature * 9.0/5.0 + 32.0
+        self.data["temp1f"] = tempf
+        self.data["temp1_time"] = ts
+        self.data["humidity_time"] = ts
         self.stored_temps.append(temperature)
         self.stored_humids.append(humidity)
         self.temperature_times.append(ts)
@@ -183,7 +158,6 @@ class TemperatureSensor:
             #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temperature_times, self.stored_temps)
             average_temp = self.ComputeAverage(self.stored_temps)
             self.data["temp1"] = average_temp
-            self.data["temp1_time"] = ts
             self.data["temp1f"] = average_temp * 9.0/5.0 + 32.0
             self.stored_temps.pop(0)
             self.temperature_times.pop(0)
@@ -192,7 +166,6 @@ class TemperatureSensor:
             #humidSlope, intercept, r_value, p_value, std_err = stats.linregress(self.humid_times, self.stored_humids)
             average_humid = self.ComputeAverage(self.stored_humids)
             self.data["humidity"] = average_humid
-            self.data["humidity_time"] = ts
             self.stored_humids.pop(0)
             self.humid_times.pop(0)
 
@@ -237,9 +210,14 @@ class TemperatureSensor:
         pressure = (pres / 4.0) / 1000.0
 
         ts = time.time()
+        self.data["delta_pressure"] = pressure - self.data["pressure"]
+        self.data["delta_temp2"] = temp2 - self.data["temp2"]
+        self.data["delta_temp2f"] = temp2f - self.data["temp2f"]
         self.data["pressure"] = pressure
         self.data["temp2"] = temp2
         self.data["temp2f"] = temp2f
+        self.data["pressure_time"] = ts
+        self.data["temp2_time"] = ts
 
         self.stored_pressures.append(pressure)
         self.pressure_times.append(ts)
@@ -250,7 +228,6 @@ class TemperatureSensor:
             #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.pressure_times, self.stored_pressures)
             average_pressure = self.ComputeAverage(self.stored_pressures)
             self.data["pressure"] = average_pressure
-            self.data["pressure_time"] = ts
             self.stored_pressures.pop(0)
             self.pressure_times.pop(0)
 
@@ -259,7 +236,6 @@ class TemperatureSensor:
             average_temp2 = self.ComputeAverage(self.stored_temp2s)
             self.data["temp2"] = average_temp2
             self.data["temp2f"] = average_temp2 * 1.8 + 32
-            self.data["temp2_time"] = ts
             self.stored_temp2s.pop(0)
             self.temp2s_times.pop(0)
 
