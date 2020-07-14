@@ -7,6 +7,10 @@
 # Date: 7/4/2020
 ##################################################################
 # git clone https://github.com/adafruit/Adafruit_Python_DHT.git
+# pip install smbus
+# pip install Flask
+# pip install numpy
+# python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
 from threading import Thread
 import smbus
 import time
@@ -19,7 +23,9 @@ from flask import Flask, request, redirect
 from flask import Response
 from flask import jsonify
 from datetime import datetime
-from scipy import stats
+#from scipy import stats
+
+USE_MPL3115A2 = False
 
 DHT_11_SAMPLE_SIZE = 30
 RECORD_RATE_SEC = 1800
@@ -62,9 +68,10 @@ class TemperatureSensor:
         dht11Thread.daemon = True
         dht11Thread.start()
 
-        mpl3115a2Thread = Thread(target = self.regular_read_mpl3115a2)
-        mpl3115a2Thread.daemon = True
-        mpl3115a2Thread.start()
+        if USE_MPL3115A2:
+            mpl3115a2Thread = Thread(target = self.regular_read_mpl3115a2)
+            mpl3115a2Thread.daemon = True
+            mpl3115a2Thread.start()
 
         server_thread = Thread(target = self.run_server)
         server_thread.daemon = True
@@ -153,6 +160,7 @@ class TemperatureSensor:
         self.stored_humids.append(humidity)
         self.temperature_times.append(ts)
         self.humid_times.append(ts)
+        print("Humid: " + str(temperature) + " Temp: " + str(tempf))
 
         if len(self.stored_temps) > DHT_11_SAMPLE_SIZE:
             #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temperature_times, self.stored_temps)
