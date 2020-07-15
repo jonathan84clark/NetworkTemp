@@ -11,18 +11,26 @@
 # pip install Flask
 # pip install numpy
 # python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
-from threading import Thread
-import smbus
-import time
-import Adafruit_DHT
-import flask.json
-import os
-import numpy as np
-import time;
-from flask import Flask, request, redirect
-from flask import Response
-from flask import jsonify
-from datetime import datetime
+# Use this command to start this on boot
+# sudo -H -u pi python /home/pi/NetworkTemp/TemperatureServer.py &
+try:
+    from threading import Thread
+    import smbus
+    import time
+    import Adafruit_DHT
+    import flask.json
+    import os
+    import numpy as np
+    import time;
+    from flask import Flask, request, redirect
+    from flask import Response
+    from flask import jsonify
+    from datetime import datetime
+except Exception as ex:
+    file = open("/home/pi/errors2", 'w')
+    file.write(str(ex))
+    file.close()
+
 #from scipy import stats
 
 USE_MPL3115A2 = False
@@ -54,33 +62,37 @@ class TemperatureSensor:
         self.pressure_times = []
         self.stored_temp2s = []
         self.temp2s_times = []
+      
+        try:
+            # Parse command line parameters.
+            sensor_args = { '11': Adafruit_DHT.DHT11,
+                            '22': Adafruit_DHT.DHT22,
+                            '2302': Adafruit_DHT.AM2302 }
+            self.sensor = sensor_args['11']
+            self.pin = '4'
+            self.data = {"temp1" : 0.0, "temp1f" : 0.0, "temp2" : 0.0, "temp2f" : 0.0, "humidity" : 0.0, "altitude" : 0.0, "pressure" : 0.0,
+                         "temp1_time" : 0.0, "temp2_time" : 0.0, "humidity_time" : 0.0, "pressure_time" : 0.0}
 
-        # Parse command line parameters.
-        sensor_args = { '11': Adafruit_DHT.DHT11,
-                        '22': Adafruit_DHT.DHT22,
-                        '2302': Adafruit_DHT.AM2302 }
-        self.sensor = sensor_args['11']
-        self.pin = '4'
-        self.data = {"temp1" : 0.0, "temp1f" : 0.0, "temp2" : 0.0, "temp2f" : 0.0, "humidity" : 0.0, "altitude" : 0.0, "pressure" : 0.0,
-                     "temp1_time" : 0.0, "temp2_time" : 0.0, "humidity_time" : 0.0, "pressure_time" : 0.0}
+            dht11Thread = Thread(target = self.regular_read_dht11)
+            dht11Thread.daemon = True
+            dht11Thread.start()
 
-        dht11Thread = Thread(target = self.regular_read_dht11)
-        dht11Thread.daemon = True
-        dht11Thread.start()
+            if USE_MPL3115A2:
+                mpl3115a2Thread = Thread(target = self.regular_read_mpl3115a2)
+                mpl3115a2Thread.daemon = True
+                mpl3115a2Thread.start()
 
-        if USE_MPL3115A2:
-            mpl3115a2Thread = Thread(target = self.regular_read_mpl3115a2)
-            mpl3115a2Thread.daemon = True
-            mpl3115a2Thread.start()
+            server_thread = Thread(target = self.run_server)
+            server_thread.daemon = True
+            server_thread.start()
 
-        server_thread = Thread(target = self.run_server)
-        server_thread.daemon = True
-        server_thread.start()
-
-        data_thread = Thread(target = self.data_processor)
-        data_thread.daemon = True
-        data_thread.start()
-
+            data_thread = Thread(target = self.data_processor)
+            data_thread.daemon = True
+            data_thread.start()
+        except Exception as ex:
+            file = open("/home/pi/errors", 'w')
+            file.write(str(ex))
+            file.close()
         
     # Regularly read the dht11
     def regular_read_dht11(self):
