@@ -13,6 +13,43 @@
 # python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
 # Use this command to start this on boot
 # sudo -H -u pi python /home/pi/NetworkTemp/TemperatureServer.py &
+# sudo apt-get install build-essential cmake pkg-config
+# sudo apt-get install libjpeg-dev libtiff5-dev libjasper-dev libpng12-dev
+# sudo apt-get install libavcodec-dev libavformat-dev libswscale-dev libv4l-dev
+# sudo apt-get install libxvidcore-dev libx264-dev
+# sudo apt-get install libgtk2.0-dev
+# sudo apt-get install libatlas-base-dev gfortran
+# sudo apt-get install python2.7-dev
+# cd ~
+# wget -O opencv.zip https://github.com/Itseez/opencv/archive/3.0.0.zip
+# unzip opencv.zip
+# wget -O opencv_contrib.zip https://github.com/Itseez/opencv_contrib/archive/3.0.0.zip
+# unzip opencv_contrib.zip
+# wget https://bootstrap.pypa.io/get-pip.py
+# sudo python get-pip.py
+# sudo pip install virtualenv virtualenvwrapper
+# sudo rm -rf ~/.cache/pip
+# nano ~/.profile
+# # virtualenv and virtualenvwrapper
+# export WORKON_HOME=$HOME/.virtualenvs
+# source /usr/local/bin/virtualenvwrapper.sh
+# mkvirtualenv cv
+# pip install numpy
+# export WORKON_HOME=$HOME/.virtualenvs
+# export VIRTUALENVWRAPPER_PYTHON=/usr/bin/python3
+# export VIRTUALENVWRAPPER_VIRTUALENV=/usr/local/bin/virtualenv
+# source /usr/local/bin/virtualenvwrapper.sh
+# export VIRTUALENVWRAPPER_ENV_BIN_DIR=bin  # <== This line fixed it for me
+# workon cv
+# cd ~/opencv-3.0.0/
+# mkdir build
+# cd build
+# cmake -D CMAKE_BUILD_TYPE=RELEASE \
+#    -D CMAKE_INSTALL_PREFIX=/usr/local \
+#    -D INSTALL_C_EXAMPLES=ON \
+#    -D INSTALL_PYTHON_EXAMPLES=ON \
+#    -D OPENCV_EXTRA_MODULES_PATH=~/opencv_contrib-3.0.0/modules \
+#    -D BUILD_EXAMPLES=ON ..
 try:
     from threading import Thread
     import smbus
@@ -34,6 +71,7 @@ except Exception as ex:
 #from scipy import stats
 
 USE_MPL3115A2 = False
+LOG_DATA = False
 
 DHT_11_SAMPLE_SIZE = 30
 RECORD_RATE_SEC = 1800
@@ -42,7 +80,7 @@ READ_DELAY = 10
 
 app = Flask(__name__)
 
-@app.route('/local_environment', methods=['GET', 'POST'])
+@app.route('/', methods=['GET', 'POST'])
 def control_post():
     global temp_sensor
     output = jsonify(temp_sensor.data)
@@ -70,14 +108,15 @@ class TemperatureSensor:
                             '2302': Adafruit_DHT.AM2302 }
             self.sensor = sensor_args['11']
             self.pin = '4'
-            self.data = {"temp1" : 0.0, "temp1f" : 0.0, "temp2" : 0.0, "temp2f" : 0.0, "humidity" : 0.0, "altitude" : 0.0, "pressure" : 0.0,
-                         "temp1_time" : 0.0, "temp2_time" : 0.0, "humidity_time" : 0.0, "pressure_time" : 0.0}
+            self.data = {"temp1" : 0.0, "temp1f" : 0.0, "humidity" : 0.0}
 
             dht11Thread = Thread(target = self.regular_read_dht11)
             dht11Thread.daemon = True
             dht11Thread.start()
 
             if USE_MPL3115A2:
+                self.data = {"temp1" : 0.0, "temp1f" : 0.0, "temp2" : 0.0, "temp2f" : 0.0, "humidity" : 0.0, "altitude" : 0.0, "pressure" : 0.0,
+                             "temp1_time" : 0.0, "temp2_time" : 0.0, "humidity_time" : 0.0, "pressure_time" : 0.0}
                 mpl3115a2Thread = Thread(target = self.regular_read_mpl3115a2)
                 mpl3115a2Thread.daemon = True
                 mpl3115a2Thread.start()
@@ -86,9 +125,11 @@ class TemperatureSensor:
             server_thread.daemon = True
             server_thread.start()
 
-            data_thread = Thread(target = self.data_processor)
-            data_thread.daemon = True
-            data_thread.start()
+            if LOG_DATA:
+                data_thread = Thread(target = self.data_processor)
+                data_thread.daemon = True
+                data_thread.start()
+
         except Exception as ex:
             file = open("/home/pi/errors", 'w')
             file.write(str(ex))
@@ -160,22 +201,15 @@ class TemperatureSensor:
         tempf = temperature * 9.0/5.0 + 32.0
 
         ts = time.time()
-        self.data["delta_temp1"] = temperature - self.data["temp1"]
-        self.data["delta_temp1f"] = tempf - self.data["temp1f"]
-        self.data["delta_humid"] = humidity - self.data["humidity"]
         self.data["humidity"] = humidity
         self.data["temp1"] = temperature
         self.data["temp1f"] = tempf
-        self.data["temp1_time"] = ts
-        self.data["humidity_time"] = ts
         self.stored_temps.append(temperature)
         self.stored_humids.append(humidity)
         self.temperature_times.append(ts)
         self.humid_times.append(ts)
-        print("Humid: " + str(temperature) + " Temp: " + str(tempf))
 
         if len(self.stored_temps) > DHT_11_SAMPLE_SIZE:
-            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temperature_times, self.stored_temps)
             average_temp = self.ComputeAverage(self.stored_temps)
             self.data["temp1"] = average_temp
             self.data["temp1f"] = average_temp * 9.0/5.0 + 32.0
@@ -183,14 +217,11 @@ class TemperatureSensor:
             self.temperature_times.pop(0)
 
         if len(self.stored_humids) > DHT_11_SAMPLE_SIZE:
-            #humidSlope, intercept, r_value, p_value, std_err = stats.linregress(self.humid_times, self.stored_humids)
             average_humid = self.ComputeAverage(self.stored_humids)
             self.data["humidity"] = average_humid
             self.stored_humids.pop(0)
             self.humid_times.pop(0)
 
-        #print("Temp: " + str(self.data["temp1"]) + " Humidity: " + str(self.data["humidity"]))
-    
     # Reads data from the mpl3115a2
     def read_mpl3115a2(self):
         # Get I2C bus
@@ -245,25 +276,17 @@ class TemperatureSensor:
         self.temp2s_times.append(ts)
 
         if len(self.stored_pressures) > DHT_11_SAMPLE_SIZE:
-            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.pressure_times, self.stored_pressures)
             average_pressure = self.ComputeAverage(self.stored_pressures)
             self.data["pressure"] = average_pressure
             self.stored_pressures.pop(0)
             self.pressure_times.pop(0)
 
         if len(self.stored_temp2s) > DHT_11_SAMPLE_SIZE:
-            #tempSlope, intercept, r_value, p_value, std_err = stats.linregress(self.temp2s_times, self.stored_temp2s)
             average_temp2 = self.ComputeAverage(self.stored_temp2s)
             self.data["temp2"] = average_temp2
             self.data["temp2f"] = average_temp2 * 1.8 + 32
             self.stored_temp2s.pop(0)
             self.temp2s_times.pop(0)
-
-        # Output data to screen
-        #print "Pressure : %.2f kPa" %self.data["pressure"]
-        #print "Altitude : %.2f m" %altitude
-        #print "Temperature in Celsius  : %.2f C" %self.data["temp2"]
-        #print "Temperature in Fahrenheit  : %.2f F" %fTemp
 
     # Runs the web server
     def run_server(self):
