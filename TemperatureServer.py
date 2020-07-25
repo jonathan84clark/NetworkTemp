@@ -58,7 +58,9 @@ try:
     import flask.json
     import os
     import numpy as np
-    import time;
+    import time
+    import json
+    import requests
     from flask import Flask, request, redirect
     from flask import Response
     from flask import jsonify
@@ -70,8 +72,8 @@ except Exception as ex:
 
 #from scipy import stats
 
-USE_MPL3115A2 = False
-LOG_DATA = False
+USE_MPL3115A2 = True
+LOG_DATA = True
 
 DHT_11_SAMPLE_SIZE = 30
 RECORD_RATE_SEC = 1800
@@ -116,10 +118,14 @@ class TemperatureSensor:
 
             if USE_MPL3115A2:
                 self.data = {"temp1" : 0.0, "temp1f" : 0.0, "temp2" : 0.0, "temp2f" : 0.0, "humidity" : 0.0, "altitude" : 0.0, "pressure" : 0.0,
-                             "temp1_time" : 0.0, "temp2_time" : 0.0, "humidity_time" : 0.0, "pressure_time" : 0.0}
+                             "outdoor_temp" : 0.0, "outdoor_tempf" : 0.0, "outdoor_humid" : 0.0}
                 mpl3115a2Thread = Thread(target = self.regular_read_mpl3115a2)
                 mpl3115a2Thread.daemon = True
                 mpl3115a2Thread.start()
+ 
+                outdoor_thread = Thread(target = self.GetOutdoorTemps)
+                outdoor_thread.daemon = True
+                outdoor_thread.start()
 
             server_thread = Thread(target = self.run_server)
             server_thread.daemon = True
@@ -166,15 +172,28 @@ class TemperatureSensor:
 
         return average
 
+    # Gets the outdoor temperature for the log file
+    def GetOutdoorTemps(self):
+        while (True):
+            try:
+                response = requests.get('http://192.168.1.13:5000')
+                data = json.loads(response.text)
+                self.data["outdoor_temp"] = data["temp1"]
+                self.data["outdoor_tempf"] = data["temp1f"]
+                self.data["outdoor_humid"] = data["humidity"]
+            except:
+                pass
+            time.sleep(RECORD_RATE_SEC)
+
     # Process the temperature, humidity and other data
     def data_processor(self):
 
         while (True):
             now = datetime.now()
-            file_name = '/home/pi/temperature_data_' + now.strftime("%m_%d_%Y") + ".csv"
+            file_name = '/home/pi/temperature_data_' + ".csv"
             if not os.path.exists(file_name):
                 f = open(file_name, 'w')
-                f.write('Date,Time,UTC,Temp1,Temp2,Humidity,Pressure\n')
+                f.write('Date,Time,UTC,Temp1,Outdoor Temp,Temp2,Humidity,Outdoor Humid,Pressure\n')
                 f.close()
             ts = time.time()
             time.sleep(STARTUP_TIME)
@@ -185,11 +204,14 @@ class TemperatureSensor:
             recorded_temp2f = self.data["temp2f"]
             recorded_humidity = self.data["humidity"]
             recorded_pressure = self.data["pressure"]
+            recorded_outdoor_temp = self.data["outdoor_temp"]
+            recorded_outdoor_tempf = self.data["outdoor_tempf"]
+            recorded_outdoor_humid = self.data["outdoor_humid"]
                 
             f = open(file_name, 'a')
             date_str = now.strftime("%m/%d/%Y,%H:%M:%S")
-            data_string = date_str + "," + str(ts) + "," + str(recorded_tempf) + "," + str(recorded_temp2f)
-            data_string += "," + str(recorded_humidity) + "," + str(recorded_pressure) + "\n"
+            data_string = date_str + "," + str(ts) + "," + str(recorded_tempf) + "," + str(recorded_outdoor_tempf) + "," + str(recorded_temp2f)
+            data_string += "," + str(recorded_humidity) + "," + str(recorded_outdoor_humid) + "," + str(recorded_pressure) + "\n"
             f.write(data_string)
             f.close()
             time.sleep(RECORD_RATE_SEC)
@@ -261,14 +283,9 @@ class TemperatureSensor:
         pressure = (pres / 4.0) / 1000.0
 
         ts = time.time()
-        self.data["delta_pressure"] = pressure - self.data["pressure"]
-        self.data["delta_temp2"] = temp2 - self.data["temp2"]
-        self.data["delta_temp2f"] = temp2f - self.data["temp2f"]
         self.data["pressure"] = pressure
         self.data["temp2"] = temp2
         self.data["temp2f"] = temp2f
-        self.data["pressure_time"] = ts
-        self.data["temp2_time"] = ts
 
         self.stored_pressures.append(pressure)
         self.pressure_times.append(ts)
