@@ -66,6 +66,7 @@ try:
     from flask import jsonify
     from datetime import datetime
 except Exception as ex:
+    print(str(ex))
     file = open("/home/pi/errors2", 'w')
     file.write(str(ex))
     file.close()
