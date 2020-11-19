@@ -3,6 +3,8 @@
 * DESC: This is the second iteration of Anthony's RTC. This one being more advanced,
 * with a WiFi interface. This device is able to automatically update for daylight savings
 * time. It is also capable of providing a web interface for setting wakeup times. 
+* Install the full DHT11 Adafruit library to use this code
+* Select board Node MCU 1.0E
 * Author: Jonathan L Clark
 * Date: 10/22/2020
 ********************************************************************/
@@ -48,8 +50,8 @@ const int led = LED_BUILTIN;
 
 void handleRoot() 
 {
-   String dataString = "{\"temperature\" : " + String(temperature) + "}";
-   dataString += ",{\"humidity\" : " + String(humidity) + "}";
+   String dataString = "{\"temperature\" : " + String(temperature) + ",";
+   dataString += " \"humidity\" : " + String(humidity) + "}";
    server.send(200, "text/plain", dataString);
   //digitalWrite(led, 0);
 }
