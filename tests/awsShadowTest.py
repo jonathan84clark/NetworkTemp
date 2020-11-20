@@ -1,13 +1,16 @@
 from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTShadowClient
 import json
+import os.path
 
 shadow = {
   "state": { "desired": { "color": { "r": 10 }, "engine": "ON", "temp" : 72.0 } }
 }
 
-PATH_TO_CERT = "/home/pi/.security/c039a05d5e-certificate.pem.crt"
-PATH_TO_KEY = "/home/pi/.security/c039a05d5e-private.pem.key"
-PATH_TO_ROOT = "/home/pi/.security/AmazonRootCA1.pem"
+USER_DIR = os.path.expanduser("~")
+
+PATH_TO_CERT = USER_DIR + "/.security/c039a05d5e-certificate.pem.crt"
+PATH_TO_KEY = USER_DIR + "/.security/c039a05d5e-private.pem.key"
+PATH_TO_ROOT = USER_DIR + "/.security/AmazonRootCA1.pem"
 
 myJSONPayload = json.dumps(shadow)
 def customCallback(data, param2, param3):

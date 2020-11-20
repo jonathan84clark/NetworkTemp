@@ -50,7 +50,11 @@
 #    -D INSTALL_PYTHON_EXAMPLES=ON \
 #    -D OPENCV_EXTRA_MODULES_PATH=~/opencv_contrib-3.0.0/modules \
 #    -D BUILD_EXAMPLES=ON ..
+# rc.local
+# sudo -H -u pi python3 /home/pi/NetworkTemp/TemperatureServer.py &
+
 try:
+    from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTShadowClient
     from threading import Thread
     import smbus
     import time
@@ -76,6 +80,12 @@ except Exception as ex:
 USE_MPL3115A2 = True
 LOG_DATA = True
 
+USER_DIR = os.path.expanduser("~")
+
+PATH_TO_CERT = USER_DIR + "/.security/c039a05d5e-certificate.pem.crt"
+PATH_TO_KEY = USER_DIR + "/.security/c039a05d5e-private.pem.key"
+PATH_TO_ROOT = USER_DIR + "/.security/AmazonRootCA1.pem"
+
 DHT_11_SAMPLE_SIZE = 30
 RECORD_RATE_SEC = 1800
 STARTUP_TIME = 20
@@ -91,7 +101,18 @@ def control_post():
 
 class TemperatureSensor:
     def __init__(self):
-
+        self.shadow = {
+            "state": { "desired": { "local_temp" : -1.0, "local_humid": -1.0, "local_pressure" : -1.0, "outdoor_temp" : -1.0, "outdoor_humid" : -1.0 } }
+            #"state": { "desired": { "color": { "r": 10 }, "engine": "ON", "temp" : 72.0 } }
+        }
+        self.shadowClient = AWSIoTMQTTShadowClient("TemperatureServer")
+        self.shadowClient.configureEndpoint("a2yizg9mkkd9ph-ats.iot.us-west-2.amazonaws.com", 8883)
+        self.shadowClient.configureCredentials(PATH_TO_ROOT, PATH_TO_KEY, PATH_TO_CERT)
+        self.shadowClient.configureConnectDisconnectTimeout(10)  # 10 sec
+        self.shadowClient.configureMQTTOperationTimeout(5)  # 5 sec
+        self.shadowClient.connect()
+        self.device_shadow = self.shadowClient.createShadowHandlerWithName("TemperatureServer", True)
+        
         # DHT 11 Data points
         self.stored_temps = [] 
         self.temperature_times = []
@@ -185,6 +206,10 @@ class TemperatureSensor:
                 print("Except: " + str(e))
             time.sleep(RECORD_RATE_SEC)
 
+    # Custom callback
+    def custom_callback(self, data, parm1, parm2):
+        pass # Do nothing
+   
     # Process the temperature, humidity and other data
     def data_processor(self):
 
@@ -197,7 +222,14 @@ class TemperatureSensor:
                 f.close()
             ts = time.time()
             time.sleep(STARTUP_TIME)
-
+            self.shadow["state"]["desired"]["local_temp"] = self.data["temp1f"]
+            self.shadow["state"]["desired"]["local_humid"] = self.data["humidity"]
+            self.shadow["state"]["desired"]["local_pressure"] = self.data["pressure"]
+            self.shadow["state"]["desired"]["outdoor_temp"] = self.data["outdoor_tempf"]
+            self.shadow["state"]["desired"]["outdoor_humid"] = self.data["outdoor_humid"]
+            
+            payload = json.dumps(self.shadow)
+            self.device_shadow.shadowUpdate(payload, self.custom_callback, 5)
             recorded_temp = self.data["temp1"]
             recorded_tempf = self.data["temp1f"]
             recorded_temp2 = self.data["temp2"]

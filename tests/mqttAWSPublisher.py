@@ -6,13 +6,16 @@ from awscrt import io, mqtt, auth, http
 from awsiot import mqtt_connection_builder
 import time as t
 import json
+import os.path
+
+USER_DIR = os.path.expanduser("~")
 
 # Define ENDPOINT, CLIENT_ID, PATH_TO_CERT, PATH_TO_KEY, PATH_TO_ROOT, MESSAGE, TOPIC, and RANGE
 ENDPOINT = "a2yizg9mkkd9ph-ats.iot.us-west-2.amazonaws.com"
 CLIENT_ID = "testDevice"
-PATH_TO_CERT = "/home/pi/.security/c039a05d5e-certificate.pem.crt"
-PATH_TO_KEY = "/home/pi/.security/c039a05d5e-private.pem.key"
-PATH_TO_ROOT = "/home/pi/.security/AmazonRootCA1.pem"
+PATH_TO_CERT = USER_DIR + "/.security/c039a05d5e-certificate.pem.crt"
+PATH_TO_KEY = USER_DIR + "/.security/c039a05d5e-private.pem.key"
+PATH_TO_ROOT = USER_DIR + "/.security/AmazonRootCA1.pem"
 MESSAGE = "Hello World"
 TOPIC = "test/testing"
 RANGE = 20
