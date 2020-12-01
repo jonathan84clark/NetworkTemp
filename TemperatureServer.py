@@ -66,6 +66,8 @@ try:
     import json
     import requests
     import subprocess
+    import sqlite3
+    from sqlite3 import Error
     from flask import Flask, request, redirect
     from flask import Response
     from flask import jsonify
@@ -76,13 +78,14 @@ except Exception as ex:
     file.write(str(ex))
     file.close()
 
+DB_FILE = "temperature_data.db"
 USER_DIR = os.path.expanduser("~")
 
 PATH_TO_CERT = USER_DIR + "/.security/c039a05d5e-certificate.pem.crt"
 PATH_TO_KEY = USER_DIR + "/.security/c039a05d5e-private.pem.key"
 PATH_TO_ROOT = USER_DIR + "/.security/AmazonRootCA1.pem"
 
-RECORD_RATE_SEC = 5 #1800
+RECORD_RATE_SEC = 1800
 STARTUP_TIME = 20
 READ_DELAY = 10
 
@@ -96,6 +99,7 @@ def control_post():
 
 class TemperatureSensor:
     def __init__(self):
+        # Create AWS connection
         self.shadow = {
             "state": { "desired": { "local_temp" : -1.0, "local_humid": -1.0, "local_pressure" : -1.0, "outdoor_temp" : -1.0, "outdoor_humid" : -1.0, "system_temp" : -1.0 } }
         }
@@ -127,6 +131,49 @@ class TemperatureSensor:
             file = open("/home/pi/errors", 'w')
             file.write(str(ex))
             file.close()
+      
+    # Validates that there is data in the sqllite database file
+    def test_db(self):
+        conn = sqlite3.connect(DB_FILE)
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM environment")
+        
+        rows = cur.fetchall()
+        
+        for row in rows:
+            print(row)
+        cur.close()
+        
+    # Writes the current data to the sql database      
+    def write_db(self):
+        conn = None
+        timestamp = time.time()
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            
+            sql_create_table = """ CREATE TABLE IF NOT EXISTS environment (
+                                        time_stamp text,
+                                        system_temp float,
+                                        temperature float,
+                                        humidity float,
+                                        pressure float,
+                                        outdoor_tempf float,
+                                        outdoor_humid float
+                                    ); """
+                                    
+            insert = ''' INSERT INTO environment(time_stamp,system_temp,temperature,humidity,pressure,outdoor_tempf,outdoor_humid)
+                         VALUES(?,?,?,?,?,?,?) '''
+            c = conn.cursor()
+            c.execute(sql_create_table)
+            conn.commit()
+            data = (timestamp, self.data["system_temp"], self.data["temperature"], self.data["humidity"], self.data["pressure"], self.data["outdoor_tempf"], self.data["outdoor_humid"])
+            c.execute(insert, data)
+            conn.commit()
+            c.close()
+            print("Saved temperature to database...")
+        except Error as ex:
+            print("Unable to write to database: " + str(ex))
+            
         
     # Regularly read the dht11
     def regular_read_dht11(self):
@@ -179,6 +226,8 @@ class TemperatureSensor:
             
             payload = json.dumps(self.shadow)
             self.device_shadow.shadowUpdate(payload, self.custom_callback, 5)
+            self.write_db()
+            #self.test_db()
             time.sleep(RECORD_RATE_SEC)
 
     def read_temp_humid(self):
