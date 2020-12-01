@@ -65,6 +65,7 @@ try:
     import time
     import json
     import requests
+    import subprocess
     from flask import Flask, request, redirect
     from flask import Response
     from flask import jsonify
@@ -75,19 +76,13 @@ except Exception as ex:
     file.write(str(ex))
     file.close()
 
-#from scipy import stats
-
-USE_MPL3115A2 = True
-LOG_DATA = True
-
 USER_DIR = os.path.expanduser("~")
 
 PATH_TO_CERT = USER_DIR + "/.security/c039a05d5e-certificate.pem.crt"
 PATH_TO_KEY = USER_DIR + "/.security/c039a05d5e-private.pem.key"
 PATH_TO_ROOT = USER_DIR + "/.security/AmazonRootCA1.pem"
 
-DHT_11_SAMPLE_SIZE = 30
-RECORD_RATE_SEC = 1800
+RECORD_RATE_SEC = 5 #1800
 STARTUP_TIME = 20
 READ_DELAY = 10
 
@@ -102,8 +97,7 @@ def control_post():
 class TemperatureSensor:
     def __init__(self):
         self.shadow = {
-            "state": { "desired": { "local_temp" : -1.0, "local_humid": -1.0, "local_pressure" : -1.0, "outdoor_temp" : -1.0, "outdoor_humid" : -1.0 } }
-            #"state": { "desired": { "color": { "r": 10 }, "engine": "ON", "temp" : 72.0 } }
+            "state": { "desired": { "local_temp" : -1.0, "local_humid": -1.0, "local_pressure" : -1.0, "outdoor_temp" : -1.0, "outdoor_humid" : -1.0, "system_temp" : -1.0 } }
         }
         self.shadowClient = AWSIoTMQTTShadowClient("TemperatureServer")
         self.shadowClient.configureEndpoint("a2yizg9mkkd9ph-ats.iot.us-west-2.amazonaws.com", 8883)
@@ -112,18 +106,6 @@ class TemperatureSensor:
         self.shadowClient.configureMQTTOperationTimeout(5)  # 5 sec
         self.shadowClient.connect()
         self.device_shadow = self.shadowClient.createShadowHandlerWithName("TemperatureServer", True)
-        
-        # DHT 11 Data points
-        self.stored_temps = [] 
-        self.temperature_times = []
-        self.stored_humids = []
-        self.humid_times = []
-
-        # MPL3115A2 Data points
-        self.stored_pressures = []
-        self.pressure_times = []
-        self.stored_temp2s = []
-        self.temp2s_times = []
       
         try:
             # Parse command line parameters.
@@ -132,31 +114,14 @@ class TemperatureSensor:
                             '2302': Adafruit_DHT.AM2302 }
             self.sensor = sensor_args['11']
             self.pin = '4'
-            self.data = {"temp1" : 0.0, "temp1f" : 0.0, "humidity" : 0.0}
-
-            dht11Thread = Thread(target = self.regular_read_dht11)
-            dht11Thread.daemon = True
-            dht11Thread.start()
-
-            if USE_MPL3115A2:
-                self.data = {"temp1" : 0.0, "temp1f" : 0.0, "temp2" : 0.0, "temp2f" : 0.0, "humidity" : 0.0, "altitude" : 0.0, "pressure" : 0.0,
-                             "outdoor_tempf" : 0.0, "outdoor_humid" : 0.0}
-                mpl3115a2Thread = Thread(target = self.regular_read_mpl3115a2)
-                mpl3115a2Thread.daemon = True
-                mpl3115a2Thread.start()
- 
-                outdoor_thread = Thread(target = self.GetOutdoorTemps)
-                outdoor_thread.daemon = True
-                outdoor_thread.start()
-
-            server_thread = Thread(target = self.run_server)
-            server_thread.daemon = True
-            server_thread.start()
-
-            if LOG_DATA:
-                data_thread = Thread(target = self.data_processor)
-                data_thread.daemon = True
-                data_thread.start()
+            self.data = {"temperature" : 0.0, "humidity" : 0.0, "pressure" : 0.0, "outdoor_tempf" : 0.0, "outdoor_humid" : 0.0, "system_temp" : 0.0}
+            
+            thread_functions = [self.regular_read_dht11, self.regular_read_mpl3115a2, self.GetOutdoorTemps, self.run_server, self.data_processor]
+            
+            for thread_func in thread_functions:
+                newThread = Thread(target = thread_func)
+                newThread.daemon = True
+                newThread.start()
 
         except Exception as ex:
             file = open("/home/pi/errors", 'w')
@@ -174,25 +139,6 @@ class TemperatureSensor:
         while (True):
             self.read_mpl3115a2()
             time.sleep(READ_DELAY)
-
-    def ComputeAverage(self, list):
-        a = np.array(list)
-        standard_deviation = np.std(a)
-        average = np.average(a)
-        new_average_items = []
-        items_to_remove = []
-        if standard_deviation == 0.0:
-            return average
-
-        for x in range(0, len(list)):
-            if abs((list[x] - average) / standard_deviation) < 3.0:
-                new_average_items.append(list[x])
-
-        if len(new_average_items) != len(list):
-            a = np.array(new_average_items)
-            average = np.average(a)
-
-        return average
 
     # Gets the outdoor temperature for the log file
     def GetOutdoorTemps(self):
@@ -215,66 +161,37 @@ class TemperatureSensor:
 
         while (True):
             now = datetime.now()
-            file_name = '/home/pi/temperature_data_' + ".csv"
-            if not os.path.exists(file_name):
-                f = open(file_name, 'w')
-                f.write('Date,Time,UTC,Temp1,Outdoor Temp,Temp2,Humidity,Outdoor Humid,Pressure\n')
-                f.close()
-            ts = time.time()
-            time.sleep(STARTUP_TIME)
-            self.shadow["state"]["desired"]["local_temp"] = self.data["temp1f"]
+            #time.sleep(STARTUP_TIME)
+            out = subprocess.Popen(['vcgencmd', 'measure_temp'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            stdout,stderr = out.communicate()
+            system_temp = None
+            system_temp_str = stdout.decode('utf-8').replace("'C\n", "").split('=')
+            if len(system_temp_str) == 2:
+                system_temp = float(system_temp_str[1])
+                self.data["system_temp"] = system_temp
+            self.shadow["state"]["desired"]["local_temp"] = self.data["temperature"]
             self.shadow["state"]["desired"]["local_humid"] = self.data["humidity"]
             self.shadow["state"]["desired"]["local_pressure"] = self.data["pressure"]
             self.shadow["state"]["desired"]["outdoor_temp"] = self.data["outdoor_tempf"]
             self.shadow["state"]["desired"]["outdoor_humid"] = self.data["outdoor_humid"]
+            if system_temp != None:
+                self.shadow["state"]["desired"]["system_temp"] = system_temp
             
             payload = json.dumps(self.shadow)
             self.device_shadow.shadowUpdate(payload, self.custom_callback, 5)
-            recorded_temp = self.data["temp1"]
-            recorded_tempf = self.data["temp1f"]
-            recorded_temp2 = self.data["temp2"]
-            recorded_temp2f = self.data["temp2f"]
-            recorded_humidity = self.data["humidity"]
-            recorded_pressure = self.data["pressure"]
-            #recorded_outdoor_temp = self.data["outdoor_temp"]
-            recorded_outdoor_tempf = self.data["outdoor_tempf"]
-            recorded_outdoor_humid = self.data["outdoor_humid"]
-                
-            f = open(file_name, 'a')
-            date_str = now.strftime("%m/%d/%Y,%H:%M:%S")
-            data_string = date_str + "," + str(ts) + "," + str(recorded_tempf) + "," + str(recorded_outdoor_tempf) + "," + str(recorded_temp2f)
-            data_string += "," + str(recorded_humidity) + "," + str(recorded_outdoor_humid) + "," + str(recorded_pressure) + "\n"
-            f.write(data_string)
-            f.close()
             time.sleep(RECORD_RATE_SEC)
 
     def read_temp_humid(self):
         # Try to grab a sensor reading.  Use the read_retry method which will retry up
         # to 15 times to get a sensor reading (waiting 2 seconds between each retry).
         humidity, temperature = Adafruit_DHT.read_retry(self.sensor, self.pin)
-        tempf = temperature * 9.0/5.0 + 32.0
+        
+        if humidity != None and temperature != None:
+            tempf = temperature * 9.0/5.0 + 32.0
 
-        ts = time.time()
-        self.data["humidity"] = humidity
-        self.data["temp1"] = temperature
-        self.data["temp1f"] = tempf
-        self.stored_temps.append(temperature)
-        self.stored_humids.append(humidity)
-        self.temperature_times.append(ts)
-        self.humid_times.append(ts)
-
-        if len(self.stored_temps) > DHT_11_SAMPLE_SIZE:
-            average_temp = self.ComputeAverage(self.stored_temps)
-            self.data["temp1"] = average_temp
-            self.data["temp1f"] = average_temp * 9.0/5.0 + 32.0
-            self.stored_temps.pop(0)
-            self.temperature_times.pop(0)
-
-        if len(self.stored_humids) > DHT_11_SAMPLE_SIZE:
-            average_humid = self.ComputeAverage(self.stored_humids)
-            self.data["humidity"] = average_humid
-            self.stored_humids.pop(0)
-            self.humid_times.pop(0)
+            #ts = time.time()
+            self.data["humidity"] = humidity
+            self.data["temperature"] = temperature
 
     # Reads data from the mpl3115a2
     def read_mpl3115a2(self):
@@ -313,29 +230,7 @@ class TemperatureSensor:
         # Convert the data to 20-bits
         pres = ((data[1] * 65536) + (data[2] * 256) + (data[3] & 0xF0)) / 16
         pressure = (pres / 4.0) / 1000.0
-
-        ts = time.time()
         self.data["pressure"] = pressure
-        self.data["temp2"] = temp2
-        self.data["temp2f"] = temp2f
-
-        self.stored_pressures.append(pressure)
-        self.pressure_times.append(ts)
-        self.stored_temp2s.append(temp2)
-        self.temp2s_times.append(ts)
-
-        if len(self.stored_pressures) > DHT_11_SAMPLE_SIZE:
-            average_pressure = self.ComputeAverage(self.stored_pressures)
-            self.data["pressure"] = average_pressure
-            self.stored_pressures.pop(0)
-            self.pressure_times.pop(0)
-
-        if len(self.stored_temp2s) > DHT_11_SAMPLE_SIZE:
-            average_temp2 = self.ComputeAverage(self.stored_temp2s)
-            self.data["temp2"] = average_temp2
-            self.data["temp2f"] = average_temp2 * 1.8 + 32
-            self.stored_temp2s.pop(0)
-            self.temp2s_times.pop(0)
 
     # Runs the web server
     def run_server(self):
