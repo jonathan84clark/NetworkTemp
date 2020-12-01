@@ -78,7 +78,7 @@ except Exception as ex:
     file.write(str(ex))
     file.close()
 
-DB_FILE = "temperature_data.db"
+DB_FILE = "/home/pi/temperature_data.db"
 USER_DIR = os.path.expanduser("~")
 
 PATH_TO_CERT = USER_DIR + "/.security/c039a05d5e-certificate.pem.crt"
@@ -103,13 +103,7 @@ class TemperatureSensor:
         self.shadow = {
             "state": { "desired": { "local_temp" : -1.0, "local_humid": -1.0, "local_pressure" : -1.0, "outdoor_temp" : -1.0, "outdoor_humid" : -1.0, "system_temp" : -1.0 } }
         }
-        self.shadowClient = AWSIoTMQTTShadowClient("TemperatureServer")
-        self.shadowClient.configureEndpoint("a2yizg9mkkd9ph-ats.iot.us-west-2.amazonaws.com", 8883)
-        self.shadowClient.configureCredentials(PATH_TO_ROOT, PATH_TO_KEY, PATH_TO_CERT)
-        self.shadowClient.configureConnectDisconnectTimeout(10)  # 10 sec
-        self.shadowClient.configureMQTTOperationTimeout(5)  # 5 sec
-        self.shadowClient.connect()
-        self.device_shadow = self.shadowClient.createShadowHandlerWithName("TemperatureServer", True)
+        self.setup_aws()
       
         try:
             # Parse command line parameters.
@@ -132,6 +126,20 @@ class TemperatureSensor:
             file.write(str(ex))
             file.close()
       
+    def setup_aws(self):
+        try:
+            self.shadowClient = AWSIoTMQTTShadowClient("TemperatureServer")
+            self.shadowClient.configureEndpoint("a2yizg9mkkd9ph-ats.iot.us-west-2.amazonaws.com", 8883)
+            self.shadowClient.configureCredentials(PATH_TO_ROOT, PATH_TO_KEY, PATH_TO_CERT)
+            self.shadowClient.configureConnectDisconnectTimeout(10)  # 10 sec
+            self.shadowClient.configureMQTTOperationTimeout(5)  # 5 sec
+            self.shadowClient.connect()
+            self.device_shadow = self.shadowClient.createShadowHandlerWithName("TemperatureServer", True)
+        except:
+            print("Error setting up AWS retrying...")
+            time.sleep(1)
+            self.setup_aws()
+    
     # Validates that there is data in the sqllite database file
     def test_db(self):
         conn = sqlite3.connect(DB_FILE)
@@ -208,7 +216,7 @@ class TemperatureSensor:
 
         while (True):
             now = datetime.now()
-            #time.sleep(STARTUP_TIME)
+            time.sleep(STARTUP_TIME)
             out = subprocess.Popen(['vcgencmd', 'measure_temp'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             stdout,stderr = out.communicate()
             system_temp = None
