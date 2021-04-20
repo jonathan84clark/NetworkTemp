@@ -101,7 +101,7 @@ class TemperatureSensor:
     def __init__(self):
         # Create AWS connection
         self.shadow = {
-            "state": { "desired": { "local_temp" : -1.0, "local_humid": -1.0, "local_pressure" : -1.0, "outdoor_temp" : -1.0, "outdoor_humid" : -1.0, "system_temp" : -1.0 } }
+            "state": { "desired": { "garage_temp" : -1.0, "garage_humid": -1.0, "garage_pressure" : -1.0, "outdoor_temp" : -1.0, "outdoor_humid" : -1.0, "system_temp" : -1.0, "indoor_tempC" : -1, "indoor_humid" : -1, "indoor_pressure" : -1, "indoor_cpu" : -1 } }
         }
         self.setup_aws()
       
@@ -112,9 +112,9 @@ class TemperatureSensor:
                             '2302': Adafruit_DHT.AM2302 }
             self.sensor = sensor_args['11']
             self.pin = '4'
-            self.data = {"temperature" : 0.0, "humidity" : 0.0, "pressure" : 0.0, "outdoor_tempf" : 0.0, "outdoor_humid" : 0.0, "system_temp" : 0.0}
+            self.data = {"garage_temp" : 0.0, "garage_humid" : 0.0, "garage_pressure" : 0.0, "outdoor_tempf" : 0.0, "outdoor_humid" : 0.0, "system_temp" : 0.0, "indoor_tempC" : 0.0, "indoor_humid" : 0.0, "indoor_pressure" : 0.0, "indoor_cpu" : 0.0}
             
-            thread_functions = [self.regular_read_dht11, self.regular_read_mpl3115a2, self.GetOutdoorTemps, self.run_server, self.data_processor]
+            thread_functions = [self.regular_read_dht11, self.regular_read_mpl3115a2, self.GetOutdoorTemps, self.run_server, self.data_processor, self.GetIndoorTemps]
             
             for thread_func in thread_functions:
                 newThread = Thread(target = thread_func)
@@ -159,22 +159,27 @@ class TemperatureSensor:
         try:
             conn = sqlite3.connect(DB_FILE)
             
+            #"indoor_tempC" : -1, "indoor_humid" : -1, "indoor_pressure" : -1, "indoor_cpu" : -1
             sql_create_table = """ CREATE TABLE IF NOT EXISTS environment (
                                         time_stamp text,
                                         system_temp float,
-                                        temperature float,
-                                        humidity float,
-                                        pressure float,
+                                        garage_temp float,
+                                        garage_humid float,
+                                        garage_pressure float,
                                         outdoor_tempf float,
-                                        outdoor_humid float
+                                        outdoor_humid float,
+                                        indoor_tempC float,
+                                        indoor_humid float,
+                                        indoor_pressure float,
+                                        indoor_cpu float
                                     ); """
                                     
-            insert = ''' INSERT INTO environment(time_stamp,system_temp,temperature,humidity,pressure,outdoor_tempf,outdoor_humid)
-                         VALUES(?,?,?,?,?,?,?) '''
+            insert = ''' INSERT INTO environment(time_stamp,system_temp,garage_temp,garage_humid,garage_pressure,outdoor_tempf,outdoor_humid,indoor_tempC,indoor_humid,indoor_pressure,indoor_cpu)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?) '''
             c = conn.cursor()
             c.execute(sql_create_table)
             conn.commit()
-            data = (timestamp, self.data["system_temp"], self.data["temperature"], self.data["humidity"], self.data["pressure"], self.data["outdoor_tempf"], self.data["outdoor_humid"])
+            data = (timestamp, self.data["system_temp"], self.data["garage_temp"], self.data["garage_humid"], self.data["garage_pressure"], self.data["outdoor_tempf"], self.data["outdoor_humid"],self.data["indoor_tempC"], self.data["indoor_humid"], self.data["indoor_pressure"], self.data["indoor_cpu"])
             c.execute(insert, data)
             conn.commit()
             c.close()
@@ -206,6 +211,20 @@ class TemperatureSensor:
             except Exception as e:
                 print("Except: " + str(e))
             time.sleep(RECORD_RATE_SEC)
+            
+    # Gets the outdoor temperature for the log file
+    def GetIndoorTemps(self):
+        while (True):
+            try:
+                response = requests.get('http://192.168.1.14:5000')
+                data = json.loads(response.text)
+                self.data["indoor_tempC"] = data["temp"]
+                self.data["indoor_pressure"] = data["pressure"]
+                self.data["indoor_humid"] = data["humid"]
+                self.data["indoor_cpu"] = data["cpu_temp"]
+            except Exception as e:
+                print("Except: " + str(e))
+            time.sleep(RECORD_RATE_SEC)
 
     # Custom callback
     def custom_callback(self, data, parm1, parm2):
@@ -224,11 +243,15 @@ class TemperatureSensor:
             if len(system_temp_str) == 2:
                 system_temp = float(system_temp_str[1])
                 self.data["system_temp"] = system_temp
-            self.shadow["state"]["desired"]["local_temp"] = self.data["temperature"]
-            self.shadow["state"]["desired"]["local_humid"] = self.data["humidity"]
-            self.shadow["state"]["desired"]["local_pressure"] = self.data["pressure"]
+            self.shadow["state"]["desired"]["garage_temp"] = self.data["garage_temp"]
+            self.shadow["state"]["desired"]["garage_humid"] = self.data["garage_humid"]
+            self.shadow["state"]["desired"]["garage_pressure"] = self.data["garage_pressure"]
             self.shadow["state"]["desired"]["outdoor_temp"] = self.data["outdoor_tempf"]
             self.shadow["state"]["desired"]["outdoor_humid"] = self.data["outdoor_humid"]
+            self.shadow["state"]["desired"]["indoor_tempC"] = self.data["indoor_tempC"]
+            self.shadow["state"]["desired"]["indoor_pressure"] = self.data["indoor_pressure"]
+            self.shadow["state"]["desired"]["indoor_humid"] = self.data["indoor_humid"]
+            self.shadow["state"]["desired"]["indoor_cpu"] = self.data["indoor_cpu"]
             if system_temp != None:
                 self.shadow["state"]["desired"]["system_temp"] = system_temp
             
@@ -247,8 +270,8 @@ class TemperatureSensor:
             tempf = temperature * 9.0/5.0 + 32.0
 
             #ts = time.time()
-            self.data["humidity"] = humidity
-            self.data["temperature"] = temperature
+            self.data["garage_humid"] = humidity
+            self.data["garage_temp"] = temperature
 
     # Reads data from the mpl3115a2
     def read_mpl3115a2(self):
@@ -287,7 +310,7 @@ class TemperatureSensor:
         # Convert the data to 20-bits
         pres = ((data[1] * 65536) + (data[2] * 256) + (data[3] & 0xF0)) / 16
         pressure = (pres / 4.0) / 1000.0
-        self.data["pressure"] = pressure
+        self.data["garage_pressure"] = pressure
 
     # Runs the web server
     def run_server(self):
