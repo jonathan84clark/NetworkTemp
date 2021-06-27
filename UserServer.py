@@ -34,7 +34,7 @@ import logging
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
-DB_FILE = "/home/pi/temperature_data.db"
+DB_FILE = "/home/jonathan/Documents/Git/temperature_data.db"
 
 
 # a route where we will display a welcome message via an HTML template
@@ -44,18 +44,82 @@ def home():
 
 @app.route('/data', methods=['GET', 'POST'])
 def data():
-    dataSet = {}
+    dataSet = {"min_values" : [], "max_values" : [], "average_values" : [], "hourly_values" : []}
     
     try:
         conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
         if request.method == 'POST':
             pass
         else:
-            #if 'edit_user' in request.args:
-            #    target_user = request.args.get('edit_user')        
-            pass
+            cursor.execute('SELECT * FROM environment') 
+            records = cursor.fetchall()
+            displayMax = False
+            displayMin = False
+            displayAverage = False
+            displayAllDaily = True
+            record_start_date = "5/10/2021"
+            record_end_date = "6/11/2021"
+            
+            start_date_obj = datetime.strptime(record_start_date, "%m/%d/%Y")
+            end_date_obj = datetime.strptime(record_end_date, "%m/%d/%Y")
+            current_day = 0
+            daily_record_cnt = 0.0
+            first_record = True
+            max_values = []
+            min_values = []
+            average_values = []
+            date_stamp_str = ""
+            for x in range(0, 10):
+                max_values.append(0.0)
+                min_values.append(0.0)
+                average_values.append(0.0)
+            
+            for record in records:
+                epoch_time = float(record[0])
+                timeStamp = datetime.fromtimestamp(epoch_time)
+                record_filter_valid = True
+                if start_date_obj != None and end_date_obj != None:
+                    if not (timeStamp >= start_date_obj and timeStamp <= end_date_obj):
+                        record_filter_valid = False
+                        
+                if record_filter_valid:
+                    if current_day != timeStamp.day:
+                        # Output rows based on min/max values
+                        if not first_record:
+                            if displayMax:
+                                dataSet["max_values"].append({"date" : date_stamp_str, "system_temp" : max_values[0], "garage_temp" : max_values[1], "garage_humid" : max_values[2], "garage_pressure" : max_values[3], "outdoor_temp" : max_values[4], "outdoor_humid" : max_values[5], "indoor_temp" : max_values[6], "indoor_humid" : max_values[7], "indoor_pressure" : max_values[8], "indoor_cpu" : max_values[9]})
+                            if displayMin:
+                                dataSet["min_values"].append({"date" : date_stamp_str, "system_temp" : min_values[0], "garage_temp" : min_values[1], "garage_humid" : min_values[2], "garage_pressure" : min_values[3], "outdoor_temp" : min_values[4], "outdoor_humid" : min_values[5], "indoor_temp" : min_values[6], "indoor_humid" : min_values[7], "indoor_pressure" : min_values[8], "indoor_cpu" : min_values[9]})   
+                            if displayAverage:
+                                dataSet["average_values"].append({"date" : date_stamp_str, "system_temp" : average_values[0] / daily_record_cnt, "garage_temp" : average_values[1] / daily_record_cnt, "garage_humid" : average_values[2] / daily_record_cnt, "garage_pressure" : average_values[3] / daily_record_cnt, "outdoor_temp" : average_values[4] / daily_record_cnt, "outdoor_humid" : average_values[5] / daily_record_cnt, "indoor_temp" : average_values[6] / daily_record_cnt, "indoor_humid" : average_values[7] / daily_record_cnt, "indoor_pressure" : average_values[8] / daily_record_cnt, "indoor_cpu" : average_values[9] / daily_record_cnt})
+                        # Create a new starting condition, assert that the max and min values are the first values in the record
+                        for x in range(0, 10):
+                            max_values[x] = record[x+1] # Records always start at idx1 because the date is idx0
+                            min_values[x] = record[x+1]
+                            average_values[x] = 0.0
+                        daily_record_cnt = 0.0
+                        date_stamp_str = timeStamp.strftime("%m/%d/%Y")
+                        current_day = timeStamp.day
+                        first_record = False
+                
+                    # Now, calculate daily statistics
+                    for x in range(0, 10):
+                        if max_values[x] < record[x+1]:
+                            max_values[x] = record[x+1]
+                        if min_values[x] > record[x+1]:
+                            min_values[x] = record[x+1]
+                        average_values[x] += record[x+1]
+                    
+                    daily_record_cnt += 1
+                
+                    if displayAllDaily:
+                        date_string = timeStamp.strftime("%m/%d/%Y")
+                        time_string = timeStamp.strftime("%H:%M:%S")
+                        dataSet["hourly_values"].append({"date" : date_string, "time" : time_string, "system_temp" : record[1], "garage_temp" : record[2], "garage_humid" : record[3], "garage_pressure" : record[4], "outdoor_temp" : record[5], "outdoor_humid" : record[6], "indoor_temp" : record[7], "indoor_humid" : record[8], "indoor_pressure" : record[9], "indoor_cpu" : record[10]})
             
     except Exception as ex:
+        print("Exception: " + str(ex))
         return jsonify(dataSet)
     
     output = jsonify(dataSet)
