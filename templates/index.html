@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/font_awesome.css') }}">
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
 <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
 <script src="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
@@ -23,13 +24,20 @@ body { margin: 0; padding: 0; }
 
 <!-- Navbar -->
 <div class="w3-top" id="navbar">
-
+<div class="w3-bar w3-black w3-card">
+<a href="https://jonathanlclark.weebly.com/" class="w3-bar-item w3-button w3-padding-large">JLC Home</a>
+</div>
 </div>
 
 <div class="w3-container w3-content w3-center w3-padding-32" style="max-width:400px" id="title">
-<h2 class="w3-wide">Magpie</h2>
+<h2 class="w3-wide">Clark Weather Station</h2>
 </div>
 
+<div id="chart_div"></div>
+
+<div id="pressure_chart"></div>
+
+<div id="humidity_chart"></div>
 
 
 
@@ -38,7 +46,108 @@ src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js">
 </script>
 
 <script>
+var chartsCreated = false;
 
+google.charts.load('current', {packages: ['corechart', 'line']});
+//google.charts.setOnLoadCallback(drawBasic);
+
+function graphTemperatures(dataSet) 
+{
+      var data = new google.visualization.DataTable();
+      data.addColumn('date', 'Day');
+      data.addColumn('number', 'Outdoor Temperature');
+	  data.addColumn('number', 'Indoor Temperature');
+	  data.addColumn('number', 'Garage Temperature');
+	  
+	  for (row in dataSet)
+	  {
+	      console.log(dataSet[row]);
+          var timestamp = Date.parse(dataSet[row]["date"]);
+          //var dateObject = new Date(timestamp);
+		  data.addRow([new Date(timestamp), dataSet[row]["outdoor_temp"], dataSet[row]["indoor_temp"], dataSet[row]["garage_temp"]]);
+		  //console.log(dateObject);
+	  }
+
+      var options = {
+	    title: 'Temperatures',
+		height: 300,
+        hAxis: {
+          title: 'Day'
+        },
+        vAxis: {
+          title: 'Temperature F'
+        }
+      };
+
+      var chart = new google.visualization.LineChart(document.getElementById('chart_div'));
+
+      chart.draw(data, options);
+}
+
+function graphPressures(dataSet) 
+{
+      var data = new google.visualization.DataTable();
+      data.addColumn('date', 'Day');
+      data.addColumn('number', 'Outdoor Pressure');
+	  data.addColumn('number', 'Indoor Pressure');
+	  
+	  for (row in dataSet)
+	  {
+	      console.log(dataSet[row]);
+          var timestamp = Date.parse(dataSet[row]["date"]);
+          //var dateObject = new Date(timestamp);
+		  data.addRow([new Date(timestamp), dataSet[row]["garage_pressure"], dataSet[row]["indoor_pressure"]]);
+		  //console.log(dateObject);
+	  }
+
+      var options = {
+	    title: 'Pressures',
+		height: 300,
+        hAxis: {
+          title: 'Day'
+        },
+        vAxis: {
+          title: 'Pressure Kpa'
+        }
+      };
+
+      var chart = new google.visualization.LineChart(document.getElementById('pressure_chart'));
+
+      chart.draw(data, options);
+}
+
+function graphHumidity(dataSet) 
+{
+      var data = new google.visualization.DataTable();
+      data.addColumn('date', 'Day');
+      data.addColumn('number', 'Outdoor Humidity');
+	  data.addColumn('number', 'Indoor Humidity');
+	  data.addColumn('number', 'Garage Humidity');
+	  
+	  for (row in dataSet)
+	  {
+	      console.log(dataSet[row]);
+          var timestamp = Date.parse(dataSet[row]["date"]);
+          //var dateObject = new Date(timestamp);
+		  data.addRow([new Date(timestamp), dataSet[row]["outdoor_humid"], dataSet[row]["indoor_humid"], dataSet[row]["garage_humid"]]);
+		  //console.log(dateObject);
+	  }
+
+      var options = {
+	    title: 'Humidity',
+		height: 300,
+        hAxis: {
+          title: 'Day'
+        },
+        vAxis: {
+          title: 'Humidity %'
+        }
+      };
+
+      var chart = new google.visualization.LineChart(document.getElementById('humidity_chart'));
+
+      chart.draw(data, options);
+}
 
 /*************************************************
 * LOADS TABLE
@@ -46,6 +155,15 @@ src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js">
 *************************************************/
 function loadTable() {
     $.getJSON('data', function (data) {
+	    //console.log(data["max_values"]);
+	    //console.log("Call1");
+		if (!chartsCreated)
+		{
+		   graphTemperatures(data["average_values"]);
+		   graphPressures(data["average_values"]);
+		   graphHumidity(data["average_values"]);
+		   chartsCreated = true;
+		}
 	     
     });
     setTimeout("loadTable()", 1000);
