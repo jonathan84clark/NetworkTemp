@@ -29,15 +29,29 @@ body { margin: 0; padding: 0; }
 </div>
 </div>
 
-<div class="w3-container w3-content w3-center w3-padding-32" style="max-width:400px" id="title">
+<div class="w3-container w3-content w3-center w3-padding-32" style="max-width:200px" id="title">
 <h2 class="w3-wide">Clark Weather Station</h2>
 </div>
+
+<div class="w3-container w3-content w3-center w3-padding-32" style="max-width:200px" id="filters">
+<label for="start">Start Date:</label>
+<input type="date" id="start_date" name="start_date"><br>
+
+<label for="start">End date:</label>
+<input type="date" id="end_date" name="end_date">
+<button type='button' class='w3-black w3-section w3-left' onclick="applyFilters()">Apply</button>
+</div>
+
 
 <div id="chart_div"></div>
 
 <div id="pressure_chart"></div>
 
 <div id="humidity_chart"></div>
+
+<div id="outdoor_temp_diff"></div>
+
+<div id="indoor_temp_diff"></div>
 
 
 
@@ -61,11 +75,8 @@ function graphTemperatures(dataSet)
 	  
 	  for (row in dataSet)
 	  {
-	      console.log(dataSet[row]);
           var timestamp = Date.parse(dataSet[row]["date"]);
-          //var dateObject = new Date(timestamp);
 		  data.addRow([new Date(timestamp), dataSet[row]["outdoor_temp"], dataSet[row]["indoor_temp"], dataSet[row]["garage_temp"]]);
-		  //console.log(dateObject);
 	  }
 
       var options = {
@@ -84,6 +95,66 @@ function graphTemperatures(dataSet)
       chart.draw(data, options);
 }
 
+function graphTemperatureDifferential(dataSet) 
+{
+      var data = new google.visualization.DataTable();
+      data.addColumn('date', 'Day');
+      data.addColumn('number', 'Outdoor Max Temps');
+	  data.addColumn('number', 'Outdoor Min Temps');
+	  data.addColumn('number', 'Differential');
+	  
+	  for (row in dataSet["max_values"])
+	  {
+          var timestamp = Date.parse(dataSet["max_values"][row]["date"]);
+		  data.addRow([new Date(timestamp), dataSet["max_values"][row]["outdoor_temp"], dataSet["min_values"][row]["outdoor_temp"], dataSet["min_max_differential"][row]["outdoor_temp"]]);
+	  }
+
+      var options = {
+	    title: 'Outdoor Temperature Differential',
+		height: 300,
+        hAxis: {
+          title: 'Day'
+        },
+        vAxis: {
+          title: 'Temperature Diff'
+        }
+      };
+
+      var chart = new google.visualization.LineChart(document.getElementById('outdoor_temp_diff'));
+
+      chart.draw(data, options);
+}
+
+function graphIndoorTemperatureDifferential(dataSet) 
+{
+      var data = new google.visualization.DataTable();
+      data.addColumn('date', 'Day');
+      data.addColumn('number', 'Indoor Max Temps');
+	  data.addColumn('number', 'Indoor Min Temps');
+	  data.addColumn('number', 'Differential');
+	  
+	  for (row in dataSet["max_values"])
+	  {
+          var timestamp = Date.parse(dataSet["max_values"][row]["date"]);
+		  data.addRow([new Date(timestamp), dataSet["max_values"][row]["indoor_temp"], dataSet["min_values"][row]["indoor_temp"], dataSet["min_max_differential"][row]["indoor_temp"]]);
+	  }
+
+      var options = {
+	    title: 'Indoor Temperature Differential',
+		height: 300,
+        hAxis: {
+          title: 'Day'
+        },
+        vAxis: {
+          title: 'Temperature Diff'
+        }
+      };
+
+      var chart = new google.visualization.LineChart(document.getElementById('indoor_temp_diff'));
+
+      chart.draw(data, options);
+}
+
 function graphPressures(dataSet) 
 {
       var data = new google.visualization.DataTable();
@@ -93,11 +164,8 @@ function graphPressures(dataSet)
 	  
 	  for (row in dataSet)
 	  {
-	      console.log(dataSet[row]);
           var timestamp = Date.parse(dataSet[row]["date"]);
-          //var dateObject = new Date(timestamp);
 		  data.addRow([new Date(timestamp), dataSet[row]["garage_pressure"], dataSet[row]["indoor_pressure"]]);
-		  //console.log(dateObject);
 	  }
 
       var options = {
@@ -126,11 +194,8 @@ function graphHumidity(dataSet)
 	  
 	  for (row in dataSet)
 	  {
-	      console.log(dataSet[row]);
           var timestamp = Date.parse(dataSet[row]["date"]);
-          //var dateObject = new Date(timestamp);
 		  data.addRow([new Date(timestamp), dataSet[row]["outdoor_humid"], dataSet[row]["indoor_humid"], dataSet[row]["garage_humid"]]);
-		  //console.log(dateObject);
 	  }
 
       var options = {
@@ -149,24 +214,58 @@ function graphHumidity(dataSet)
       chart.draw(data, options);
 }
 
+function applyFilters()
+{
+	var startDateObj = new Date($('#start_date').val());
+	var endDateObj = new Date($('#end_date').val());
+	var startTime = document.getElementById("start_time");
+	var endTime = document.getElementById("end_time");
+	var queryString = "";
+	if (!Number.isNaN(startDateObj.getDate()) && !Number.isNaN(endDateObj.getDate()))
+	{
+	    if (startDateObj > endDateObj)
+		{
+		    console.log("Warning: Start date is greater than end date");
+		}
+		else
+		{
+		    
+		    queryString += "&start_date=" + (startDateObj.getMonth() + 1) + "/" + startDateObj.getDate() + "/" + startDateObj.getFullYear();
+			queryString += "&end_date=" + (endDateObj.getMonth() + 1) + "/" + endDateObj.getDate() + "/" + endDateObj.getFullYear();
+		}
+	}
+	
+    $.getJSON('data?' + queryString, function (data) {
+		//if (!chartsCreated)
+		//{
+		graphTemperatures(data["average_values"]);
+		graphPressures(data["average_values"]);
+		graphHumidity(data["average_values"]);
+		graphTemperatureDifferential(data);
+		graphIndoorTemperatureDifferential(data);
+		//chartsCreated = true;
+		//}
+	     
+    });
+}
+
 /*************************************************
 * LOADS TABLE
 * DESC: Loads all user tables onto the user page
 *************************************************/
 function loadTable() {
     $.getJSON('data', function (data) {
-	    //console.log(data["max_values"]);
-	    //console.log("Call1");
 		if (!chartsCreated)
 		{
 		   graphTemperatures(data["average_values"]);
 		   graphPressures(data["average_values"]);
 		   graphHumidity(data["average_values"]);
+		   graphTemperatureDifferential(data);
+		   graphIndoorTemperatureDifferential(data);
 		   chartsCreated = true;
 		}
 	     
     });
-    setTimeout("loadTable()", 1000);
 }
 
 </script>

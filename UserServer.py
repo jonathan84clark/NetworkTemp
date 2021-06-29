@@ -36,6 +36,8 @@ log.setLevel(logging.ERROR)
 
 DB_FILE = "/home/jonathan/Documents/Git/temperature_data.db"
 
+cToFIndicies = [0, 1, 6, 9]
+
 
 # a route where we will display a welcome message via an HTML template
 @app.route("/")
@@ -44,7 +46,7 @@ def home():
 
 @app.route('/data', methods=['GET', 'POST'])
 def data():
-    dataSet = {"min_values" : [], "max_values" : [], "average_values" : [], "hourly_values" : []}
+    dataSet = {"min_values" : [], "max_values" : [], "average_values" : [], "hourly_values" : [], "min_max_differential" : []}
     
     try:
         conn = sqlite3.connect(DB_FILE)
@@ -54,25 +56,29 @@ def data():
         else:
             cursor.execute('SELECT * FROM environment') 
             records = cursor.fetchall()
-            displayMax = True
-            displayMin = False
-            displayAverage = True
             displayAllDaily = False
-            record_start_date = "5/10/2021"
-            record_end_date = "6/11/2021"
+            start_date_obj = None
+            end_date_obj = None
             
-            start_date_obj = None #datetime.strptime(record_start_date, "%m/%d/%Y")
-            end_date_obj = None #datetime.strptime(record_end_date, "%m/%d/%Y")
+            # Filter to handle start and end date
+            if request.args.get("start_date") != None and request.args.get("end_date") != None:
+                start_date = request.args.get('start_date')
+                end_date = request.args.get('end_date')
+                start_date_obj = datetime.strptime(start_date, "%m/%d/%Y")
+                end_date_obj = datetime.strptime(end_date, "%m/%d/%Y")
+
             current_day = 0
             daily_record_cnt = 0.0
             first_record = True
             max_values = []
             min_values = []
             average_values = []
+            min_max_differential = []
             date_stamp_str = ""
             for x in range(0, 10):
                 max_values.append(0.0)
                 min_values.append(0.0)
+                min_max_differential.append(0.0)
                 average_values.append(0.0)
             
             for record in records:
@@ -86,32 +92,28 @@ def data():
                 if record_filter_valid:
                     if current_day != timeStamp.day:
                         # Output rows based on min/max values
-                        if not first_record:
-                            if displayMax:
-                                max_values[6] = max_values[6] * (9.0/5.0) + 32.0
-                                max_values[1] = max_values[1] * (9.0/5.0) + 32.0
-                                max_values[0] = max_values[0] * (9.0/5.0) + 32.0
-                                max_values[9] = max_values[9] * (9.0/5.0) + 32.0
-                                max_values[3] *= 10.0                              
-                                dataSet["max_values"].append({"date" : date_stamp_str, "system_temp" : max_values[0], "garage_temp" : max_values[1], "garage_humid" : max_values[2], "garage_pressure" : max_values[3], "outdoor_temp" : max_values[4], "outdoor_humid" : max_values[5], "indoor_temp" : max_values[6], "indoor_humid" : max_values[7], "indoor_pressure" : max_values[8], "indoor_cpu" : max_values[9]})
-                            if displayMin:
-                                min_values[6] = min_values[6] * (9.0/5.0) + 32.0
-                                min_values[1] = min_values[1] * (9.0/5.0) + 32.0
-                                min_values[0] = min_values[0] * (9.0/5.0) + 32.0
-                                min_values[9] = min_values[9] * (9.0/5.0) + 32.0  
-                                min_values[3] *= 10.0 
-                                dataSet["min_values"].append({"date" : date_stamp_str, "system_temp" : min_values[0], "garage_temp" : min_values[1], "garage_humid" : min_values[2], "garage_pressure" : min_values[3], "outdoor_temp" : min_values[4], "outdoor_humid" : min_values[5], "indoor_temp" : min_values[6], "indoor_humid" : min_values[7], "indoor_pressure" : min_values[8], "indoor_cpu" : min_values[9]})   
-                            if displayAverage:
-                                average_values[6] = (average_values[6] / daily_record_cnt) * (9.0/5.0) + 32.0
-                                average_values[1] = (average_values[1] / daily_record_cnt) * (9.0/5.0) + 32.0
-                                average_values[0] = (average_values[0] / daily_record_cnt) * (9.0/5.0) + 32.0
-                                average_values[9] = (average_values[9] / daily_record_cnt) * (9.0/5.0) + 32.0
-                                average_values[3] = (average_values[3] / daily_record_cnt) * 10.0 
-                                dataSet["average_values"].append({"date" : date_stamp_str, "system_temp" : average_values[0], "garage_temp" : average_values[1], "garage_humid" : average_values[2] / daily_record_cnt, "garage_pressure" : average_values[3], "outdoor_temp" : average_values[4] / daily_record_cnt, "outdoor_humid" : average_values[5] / daily_record_cnt, "indoor_temp" : average_values[6], "indoor_humid" : average_values[7] / daily_record_cnt, "indoor_pressure" : average_values[8] / daily_record_cnt, "indoor_cpu" : average_values[9] / daily_record_cnt})
+                        if not first_record:                          
+                            # Finish average computation
+                            for x in range(0, 10):
+                                average_values[x] = average_values[x] / daily_record_cnt
+                            
+                            # Calculate differentials
+                            for x in range(0, 10):
+                                min_max_differential[x] = max_values[x] - min_values[x]
+                            
+                            # Append data to data rows
+                            dataSet["min_max_differential"].append({"date" : date_stamp_str, "system_temp" : min_max_differential[0], "garage_temp" : min_max_differential[1], "garage_humid" : min_max_differential[2], "garage_pressure" : min_max_differential[3], "outdoor_temp" : min_max_differential[4], "outdoor_humid" : min_max_differential[5], "indoor_temp" : min_max_differential[6], "indoor_humid" : min_max_differential[7], "indoor_pressure" : min_max_differential[8], "indoor_cpu" : min_max_differential[9]})
+                            dataSet["average_values"].append({"date" : date_stamp_str, "system_temp" : average_values[0], "garage_temp" : average_values[1], "garage_humid" : average_values[2], "garage_pressure" : average_values[3], "outdoor_temp" : average_values[4], "outdoor_humid" : average_values[5], "indoor_temp" : average_values[6], "indoor_humid" : average_values[7], "indoor_pressure" : average_values[8], "indoor_cpu" : average_values[9]})
+                            dataSet["max_values"].append({"date" : date_stamp_str, "system_temp" : max_values[0], "garage_temp" : max_values[1], "garage_humid" : max_values[2], "garage_pressure" : max_values[3], "outdoor_temp" : max_values[4], "outdoor_humid" : max_values[5], "indoor_temp" : max_values[6], "indoor_humid" : max_values[7], "indoor_pressure" : max_values[8], "indoor_cpu" : max_values[9]})
+                            dataSet["min_values"].append({"date" : date_stamp_str, "system_temp" : min_values[0], "garage_temp" : min_values[1], "garage_humid" : min_values[2], "garage_pressure" : min_values[3], "outdoor_temp" : min_values[4], "outdoor_humid" : min_values[5], "indoor_temp" : min_values[6], "indoor_humid" : min_values[7], "indoor_pressure" : min_values[8], "indoor_cpu" : min_values[9]})   
+                            
                         # Create a new starting condition, assert that the max and min values are the first values in the record
                         for x in range(0, 10):
-                            max_values[x] = record[x+1] # Records always start at idx1 because the date is idx0
-                            min_values[x] = record[x+1]
+                            value = record[x+1]
+                            if x in cToFIndicies:
+                                value = value * (9.0/5.0) + 32.0
+                            max_values[x] = value # Records always start at idx1 because the date is idx0
+                            min_values[x] = value
                             average_values[x] = 0.0
                         daily_record_cnt = 0.0
                         date_stamp_str = timeStamp.strftime("%m/%d/%Y")
@@ -120,14 +122,20 @@ def data():
                 
                     # Now, calculate daily statistics
                     for x in range(0, 10):
-                        if max_values[x] < record[x+1]:
-                            max_values[x] = record[x+1]
-                        if min_values[x] > record[x+1]:
-                            min_values[x] = record[x+1]
-                        average_values[x] += record[x+1]
+                        value = record[x+1]
+                        if x == 3:
+                            value = value * 10.0
+                        if x in cToFIndicies:
+                            value = value * (9.0/5.0) + 32.0
+                        if max_values[x] < value:
+                            max_values[x] = value
+                        if min_values[x] > value:
+                            min_values[x] = value
+                        average_values[x] += value
                     
                     daily_record_cnt += 1
-                
+                    
+                    # Display all values
                     if displayAllDaily:
                         date_string = timeStamp.strftime("%m/%d/%Y")
                         time_string = timeStamp.strftime("%H:%M:%S")
