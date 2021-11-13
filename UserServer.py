@@ -34,7 +34,7 @@ import logging
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
-DB_FILE = "/home/jonathan/Documents/Git/temperature_data.db"
+DB_FILE = "/home/pi/temperature_data.db"
 
 cToFIndicies = [0, 1, 6, 9]
 
