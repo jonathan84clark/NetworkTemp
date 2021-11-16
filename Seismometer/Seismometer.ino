@@ -20,17 +20,22 @@
 #define STAPSK  "1990clark$fam1984"
 #endif
 
+#define BUFFER_SIZE 512
+#define MAX_SAMPLES 5
 unsigned int localPort = 8888;      // local port to listen on
+float accXSamples[MAX_SAMPLES];
+float accYSamples[MAX_SAMPLES];
+float accZSamples[MAX_SAMPLES];
+float temperature = 0.0;
 
 // buffers for receiving and sending data
-//char packetBuffer[UDP_TX_PACKET_MAX_SIZE + 1]; //buffer to hold incoming packet,
-char  sendBuffer[8];       // a string to send back
+char  sendBuffer[BUFFER_SIZE];       // a string to send back
 unsigned long msTicks = 0;
 unsigned long udpTime = 0;
-unsigned long motionDetectCool = 0.0;
-int motionSensed = 0;
+int sampleIndex = 0;
+int sampleCount = 0;
 uint16_t lastAnalogRead = 0;
-unsigned long ledOffTime = 0;
+
 Adafruit_MPU6050 mpu;
 
 WiFiUDP Udp;
@@ -47,7 +52,7 @@ void setup() {
     Serial.print('.');
     delay(500);
   }
- 
+  Serial.println(sizeof(long));
   Serial.print("Connected! IP address: ");
   Serial.println(WiFi.localIP());
 
@@ -63,6 +68,7 @@ void setup() {
    mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
    mpu.setGyroRange(MPU6050_RANGE_250_DEG);
    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+   
    delay(100);
    Udp.begin(localPort);
   
@@ -73,27 +79,48 @@ void loop()
    msTicks = millis();
    if (udpTime < msTicks)
    {
-       sendBuffer[0] = 0xCD;
-       sendBuffer[1] = motionSensed;
-       sendBuffer[2] = lastAnalogRead & 0x00FF;
-       sendBuffer[3] = (lastAnalogRead >> 8) & 0x00FF;
-
-       // send a reply, to the IP address and port that sent us the packet we received
-       Udp.beginPacket("192.168.1.255", 3030);
-       Udp.write(sendBuffer, 4);
-       Udp.endPacket();
-
-       // Collect accelerations
-       sensors_event_t a, g, temp;
-       mpu.getEvent(&a, &g, &temp);
-       Serial.printf("Accx: %f\n", a.acceleration.x);
-       Serial.printf("Accy: %f\n", a.acceleration.y);
-       Serial.printf("Accz: %f\n", a.acceleration.z);
-       Serial.printf("Temp: %f\n", temp.temperature);
-       a.acceleration.y;
-       a.acceleration.z;
+       if (sampleCount == 5)
+       {
+          char floatString[10];
+          sprintf(sendBuffer, "Data:: AccX: ");
+          for (int i = 0; i < MAX_SAMPLES; i++)
+          {
+             sprintf(floatString, "%.4f, ", accXSamples[i]);
+             strncat(sendBuffer, floatString, BUFFER_SIZE);
+          }
+          strcat(sendBuffer, "AccY: ");
+          for (int i = 0; i < MAX_SAMPLES; i++)
+          {
+             sprintf(floatString, "%.4f, ", accYSamples[i]);
+             strncat(sendBuffer, floatString, BUFFER_SIZE);
+          }
+          strcat(sendBuffer, "AccZ: ");
+          for (int i = 0; i < MAX_SAMPLES; i++)
+          {
+             sprintf(floatString, "%.4f, ", accZSamples[i]);
+             strncat(sendBuffer, floatString, BUFFER_SIZE);
+          }
+          sprintf(floatString, "Temp: %.4f", temperature);
+          strcat(sendBuffer, floatString);
+          Serial.printf("%s\n", sendBuffer);
+          // send a reply, to the IP address and port that sent us the packet we received
+          Udp.beginPacket("192.168.1.255", 5153);
+          Udp.write(sendBuffer, strlen(sendBuffer));
+          Udp.endPacket();
+          sampleCount = 0;
+       }
+       else
+       {
+          // Collect accelerations
+          sensors_event_t a, g, temp;
+          mpu.getEvent(&a, &g, &temp);
+          accXSamples[sampleCount] = a.acceleration.x;
+          accYSamples[sampleCount] = a.acceleration.y;
+          accZSamples[sampleCount] = a.acceleration.z;
+          temperature = temp.temperature;
+          sampleCount++;
+       }
        
-       udpTime = msTicks + 1000;
-       ledOffTime = msTicks + 500;
+       udpTime = msTicks + 200;
    }
 }
