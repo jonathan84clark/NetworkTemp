@@ -3,7 +3,7 @@
 * DESC: Simple device designed to detect and transmit any accelerations it
 * detects. This device is designed to detect vibrations on the earth as
 * well as earthquakes.
-* 
+* Requires the BME280 library by Tyler Glenn
 * Author: Jonathan L Clark
 * Date: 11/13/2021
 ***********************************************************************/
@@ -11,7 +11,8 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <Wire.h>
-#include <SPI.h>
+
+#include <BME280I2C.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
@@ -37,6 +38,7 @@ int sampleCount = 0;
 uint16_t lastAnalogRead = 0;
 
 Adafruit_MPU6050 mpu;
+BME280I2C bme;    // Default : forced mode, standby time = 1000 ms
 
 WiFiUDP Udp;
 
@@ -52,10 +54,17 @@ void setup() {
     Serial.print('.');
     delay(500);
   }
-  Serial.println(sizeof(long));
   Serial.print("Connected! IP address: ");
   Serial.println(WiFi.localIP());
 
+  Wire.begin();
+
+  while(!bme.begin())
+  {
+    Serial.println("Could not find BME280 sensor!");
+    delay(1000);
+  }
+  
   if (!mpu.begin()) 
   {
      Serial.println("Failed to find MPU6050 chip");
@@ -100,8 +109,22 @@ void loop()
              sprintf(floatString, "%.4f, ", accZSamples[i]);
              strncat(sendBuffer, floatString, BUFFER_SIZE);
           }
-          sprintf(floatString, "Temp: %.4f", temperature);
+          sprintf(floatString, "Temp: %.4f, ", temperature);
           strcat(sendBuffer, floatString);
+
+          float temp(NAN), hum(NAN), pres(NAN);
+
+          BME280::TempUnit tempUnit(BME280::TempUnit_Celsius);
+          BME280::PresUnit presUnit(BME280::PresUnit_Pa);
+
+          bme.read(pres, temp, hum, tempUnit, presUnit);
+
+          sprintf(floatString, "Pressure: %.4f, ", pres);
+          strcat(sendBuffer, floatString);
+
+          sprintf(floatString, "Temp2: %.4f", temp);
+          strcat(sendBuffer, floatString);
+          
           Serial.printf("%s\n", sendBuffer);
           // send a reply, to the IP address and port that sent us the packet we received
           Udp.beginPacket("192.168.1.255", 5153);
