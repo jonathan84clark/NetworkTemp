@@ -3,7 +3,6 @@
 # DESC: Serves up images to display to the user.
 # You will need to allow traffic through the TCP port sudo ufw allow 3589
 # Author: Jonathan L Clark
-# Company: Special Services Group LLC
 # sudo pip3 install flask-wtf
 # pip3 install email_validator
 # the session manager components were based on the above source. Since we are using SQLLite3.
