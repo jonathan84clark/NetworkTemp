@@ -53,7 +53,9 @@ def data():
         if request.method == 'POST':
             pass
         else:
-            cursor.execute('SELECT * FROM environment') 
+            timestamp = time.time()
+            three_month_old_timestamp = timestamp - 2419200
+            cursor.execute('SELECT * FROM environment WHERE time_stamp > ' + str(three_month_old_timestamp)) 
             records = cursor.fetchall()
             displayAllDaily = False
             start_date_obj = None
