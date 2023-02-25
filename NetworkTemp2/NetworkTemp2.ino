@@ -77,6 +77,8 @@ void setup()
 {
    Serial.begin(9600);
    pinMode(A0, INPUT);
+   pinMode(BUILTIN_LED, OUTPUT);
+   digitalWrite(BUILTIN_LED, HIGH);
    int offlineIndex = 0;
    delay(5000);
    WiFi.begin(ssid, password);
