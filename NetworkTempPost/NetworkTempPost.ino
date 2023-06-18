@@ -3,17 +3,14 @@
 * DESC: Network Temp2 uses an AHT10 and BMP280 to provide temperature
 * humidity and air pressure.
 * Author: Jonathan L Clark
-* Date: 8/20/2022
+* Date: 6/17/2023
 *******************************************************************/
 #include <Adafruit_BMP280.h>
 #include <Adafruit_AHT10.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
-#include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-
-#define RED_LED 6
-#define GREEN_LED 5
+#include <ESP8266HTTPClient.h>
 
 Adafruit_AHT10 aht;
 Adafruit_BMP280 bmp; // use I2C interface
@@ -32,12 +29,13 @@ float humidity_value;
 float temperature2;
 float air_pressure;
 unsigned int light_value = 0;
-unsigned long led_shutoff = 0;
+unsigned long next_post = 0;
+int seconds_count = -1;
 
 const char* ssid     = STASSID;
 const char* password = STAPSK;
 
-ESP8266WebServer server(80);
+#define SERVER_IP "192.168.1.25:8005"
 
 // Set your Static IP address
 IPAddress local_IP(192, 168, 1, 200);
@@ -47,36 +45,6 @@ IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress primaryDNS(8, 8, 8, 8);   //optional
 IPAddress secondaryDNS(8, 8, 4, 4); //optional
-
-void handleRoot() 
-{
-   String dataString = "{\"temperature\" : " + String(temperature) + ",";
-   dataString += " \"temperature2\" : " + String(temperature2) + ",";
-   dataString += " \"air_pressure\" : " + String(air_pressure) + ",";
-   dataString += " \"light_value\" : " + String(light_value) + ",";
-   dataString += " \"humidity\" : " + String(humidity_value) + "}";
-   server.send(200, "application/json", dataString);
-}
-
-/******************************************************
-* HANDLES THE PAGE NOT BEING FOUND
-******************************************************/
-void handleNotFound() 
-{
-   String message = "File Not Found\n\n";
-   message += "URI: ";
-   message += server.uri();
-   message += "\nMethod: ";
-   message += (server.method() == HTTP_GET) ? "GET" : "POST";
-   message += "\nArguments: ";
-   message += server.args();
-   message += "\n";
-   for (uint8_t i = 0; i < server.args(); i++) 
-   {
-      message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-   }
-   server.send(404, "text/plain", message);
-}
 
 void setup() 
 {
@@ -105,7 +73,6 @@ void setup()
          offlineIndex++;
          if (offlineIndex >= 10)
          {
-            digitalWrite(RED_LED, HIGH);
             break;
          }
       }
@@ -125,7 +92,6 @@ void setup()
    if (! aht.begin()) 
    {
       Serial.println("Could not find AHT10? Check wiring");
-      digitalWrite(RED_LED, HIGH);
       while (1) delay(10);
    }
    Serial.println("AHT10 found");
@@ -133,8 +99,6 @@ void setup()
    {
       Serial.println(F("Could not find a valid BMP280 sensor, check wiring or "
                       "try a different address!"));
-      digitalWrite(RED_LED, HIGH);
-      //while (1) delay(10);
    }
    else
    {
@@ -162,35 +126,69 @@ void setup()
       {
          Serial.println("MDNS responder started");
       }
-
-      server.on("/", handleRoot);
-      server.onNotFound(handleNotFound);
-      server.begin();
-      Serial.println("HTTP server started");
    }
    else
    {
       Serial.println("System starting in offline mode");
    }
+   next_post = millis() + 5000;
 }
 
-void loop() {
-
-   if (!offlineMode)
+/***********************************************************
+* POST DATA
+* DESC: Posts data to the HTTP server
+***********************************************************/
+void PostData(float temperature, float temperature2, float humidity, float air_pressure, unsigned int lightLevel)
+{
+   if ((WiFi.status() == WL_CONNECTED)) 
    {
-      light_value = analogRead(A0);
-      sensors_event_t humidity, temp;
-      aht.getEvent(&humidity, &temp);
-      temperature = temp.temperature;
-      humidity_value = humidity.relative_humidity;
-      sensors_event_t temp_event, pressure_event;
-      if (bmpOnline)
+      WiFiClient client;
+      HTTPClient http;
+
+      // configure traged server and url
+      http.begin(client, "http://" SERVER_IP "/data.json"); //HTTP
+      http.addHeader("Content-Type", "application/json");
+
+      // start connection and send HTTP header and body
+      int httpCode = http.POST("{\"source\":\"outdoor_sensor\", \"desc\" : \"outdoor_sensor\", \"temperature\" : " + String(temperature) + ", \"temperature2\" : " + String(temperature2) + ", \"humidity\" : " + String(humidity) + ", \"light_level\" : " + String(lightLevel) + "}");
+
+      // httpCode will be negative on error
+      if (httpCode > 0) 
       {
-         bmp_temp->getEvent(&temp_event);
-         bmp_pressure->getEvent(&pressure_event);
-         air_pressure = pressure_event.pressure;
-         temperature2 = temp_event.temperature;
-      }
-      server.handleClient();
+         // file found at server
+         if (httpCode == HTTP_CODE_OK) 
+         {
+            const String& payload = http.getString();
+         }
+      } 
+      http.end();
    }
+}
+
+void loop() 
+{
+    if (next_post < millis())
+    {
+        if (seconds_count == 1800 || seconds_count == -1)
+        {
+           //Serial.println("Sending...");
+           light_value = analogRead(A0);
+           sensors_event_t humidity, temp;
+           aht.getEvent(&humidity, &temp);
+           temperature = temp.temperature;
+           humidity_value = humidity.relative_humidity;
+           sensors_event_t temp_event, pressure_event;
+           if (bmpOnline)
+           {
+              bmp_temp->getEvent(&temp_event);
+              //bmp_pressure->getEvent(&pressure_event);
+              //air_pressure = pressure_event.pressure;
+              temperature2 = temp_event.temperature;
+           }
+           PostData(temperature, temperature2, humidity_value, air_pressure, light_value);
+           seconds_count = 0;
+        }
+        seconds_count++;
+        next_post = millis() + 1000;
+    }
 }
