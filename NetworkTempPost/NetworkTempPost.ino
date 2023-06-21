@@ -35,16 +35,7 @@ int seconds_count = -1;
 const char* ssid     = STASSID;
 const char* password = STAPSK;
 
-#define SERVER_IP "192.168.1.25:8005"
-
-// Set your Static IP address
-IPAddress local_IP(192, 168, 1, 200);
-// Set your Gateway IP address
-IPAddress gateway(192, 168, 1, 1);
-
-IPAddress subnet(255, 255, 255, 0);
-IPAddress primaryDNS(8, 8, 8, 8);   //optional
-IPAddress secondaryDNS(8, 8, 4, 4); //optional
+#define SERVER_IP "192.168.1.25"
 
 void setup() 
 {
@@ -54,12 +45,8 @@ void setup()
    digitalWrite(BUILTIN_LED, HIGH);
    int offlineIndex = 0;
    delay(5000);
+   WiFi.mode(WIFI_STA);
    WiFi.begin(ssid, password);
-   if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS))
-   {
-      Serial.println("STA Failed to configure");
-   }
-   Serial.println("");
 
    // Wait for connection
    while (WiFi.status() != WL_CONNECTED) 
