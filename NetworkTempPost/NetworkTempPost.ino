@@ -35,7 +35,7 @@ int seconds_count = -1;
 const char* ssid     = STASSID;
 const char* password = STAPSK;
 
-#define SERVER_IP "192.168.1.25"
+#define SERVER_IP "192.168.1.24"
 
 void setup() 
 {
